@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     max_upload_size_bytes: int = 25 * 1024 * 1024
     object_store_root: str = "./data/objects"
 
+    # Frontend dev server origin(s) allowed to call this API (spec §37).
+    cors_allow_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000"]
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+import uuid
+
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 
 from agentic_rag.api.dependencies.db import DbSession
@@ -29,3 +31,11 @@ async def create_collection(body: CollectionCreate, db: DbSession) -> Collection
 async def list_collections(db: DbSession) -> list[Collection]:
     result = await db.scalars(select(Collection).order_by(Collection.created_at.desc()))
     return list(result.all())
+
+
+@router.get("/{collection_id}", response_model=CollectionResponse)
+async def get_collection(collection_id: uuid.UUID, db: DbSession) -> Collection:
+    collection = await db.get(Collection, collection_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail="collection not found")
+    return collection

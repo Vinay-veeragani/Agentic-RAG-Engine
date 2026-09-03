@@ -10,15 +10,18 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from agentic_rag.api.routes.collections import router as collections_router
 from agentic_rag.api.routes.documents import router as documents_router
+from agentic_rag.api.routes.evaluations import router as evaluations_router
 from agentic_rag.api.routes.health import router as health_router
 from agentic_rag.api.routes.metrics import router as metrics_router
 from agentic_rag.api.routes.query import queries_router
 from agentic_rag.api.routes.query import router as query_router
 from agentic_rag.api.routes.retrieval import router as retrieval_router
+from agentic_rag.api.routes.settings import router as settings_router
 from agentic_rag.api.schemas.errors import ErrorResponse
 from agentic_rag.core.config import get_settings
 from agentic_rag.core.errors import AgenticRAGError
@@ -60,6 +63,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(title="Agentic RAG Platform", version="0.1.0", lifespan=lifespan)
 
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=get_settings().cors_allow_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["x-trace-id"],
+    )
+
     @app.middleware("http")
     async def trace_id_middleware(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
@@ -98,6 +110,8 @@ def create_app() -> FastAPI:
     app.include_router(query_router)
     app.include_router(queries_router)
     app.include_router(metrics_router)
+    app.include_router(settings_router)
+    app.include_router(evaluations_router)
     return app
 
 
