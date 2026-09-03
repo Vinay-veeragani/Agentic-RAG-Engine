@@ -1,10 +1,11 @@
 # Architecture
 
-Status: Phase 6 (Query analysis + retrieval planning) complete, on top of
-Phase 1 (Foundation), Phase 2 (Ingestion), Phase 3 (Chunking + embeddings +
-indexing), Phase 4 (Dense + sparse + hybrid retrieval, RRF), and Phase 5
-(Reranking). This document will grow with each phase; it only describes
-what is actually implemented.
+Status: Phase 7 (Agentic retrieval loop) complete, on top of Phase 1
+(Foundation), Phase 2 (Ingestion), Phase 3 (Chunking + embeddings +
+indexing), Phase 4 (Dense + sparse + hybrid retrieval, RRF), Phase 5
+(Reranking), and Phase 6 (Query analysis + retrieval planning). This
+document will grow with each phase; it only describes what is actually
+implemented.
 
 ## Design decisions
 
@@ -404,6 +405,101 @@ chosen for dependency stability; nothing in the codebase depends on a
 - Nothing from this phase is wired into the retrieval endpoints yet —
   `/query/analyze` is a standalone preview; the agentic loop that actually
   executes a plan against `/retrieve` is Phase 7.
+
+## What's implemented (Phase 7)
+
+- `agents/evidence_agent.py` — `EvidenceAgent.assess(query, candidates)` ->
+  `EvidenceAssessment{sufficient, reason, missing_information}` (spec §15's
+  lightweight version — the fuller judgment with source authority,
+  directness, temporal correctness, and contradiction detection is Phase
+  8's scope; building that here would get ahead of the phase meant to
+  implement it). No candidates always short-circuits to `sufficient=False`
+  without an LLM call.
+- `agents/retrieval_agent.py` — `RetrievalAgent.retrieve(queries, plan)`:
+  dispatches to dense/sparse/hybrid per the plan's strategy, and — new here
+  — supports *multiple query variants at once* (used when the plan enabled
+  expansion) by retrieving each variant independently and fusing the
+  per-variant rankings with the same `reciprocal_rank_fusion` that combines
+  dense+sparse in Phase 4, applied one level up. Always reranks down to a
+  final evidence count (default 8, within spec's suggested 5-10) and
+  reassigns `rank` post-fusion/rerank.
+- `agents/research_agent.py` — `AgenticRetrievalLoop.run()`: the bounded
+  plan -> retrieve -> rerank -> evaluate -> refine-if-insufficient loop
+  (spec §16). Hard-bounded *by construction*: the loop body is a
+  `for iteration in range(1, plan.max_iterations + 1)`, and
+  `max_iterations` is already clamped to `settings.max_retrieval_iterations`
+  by `RetrievalPlanner` (Phase 6) before this ever runs — a bounded `for`
+  loop cannot run forever regardless of what any LLM (or the mock)
+  proposes. `settings.max_retrieval_calls` is checked independently every
+  iteration, since query decomposition (spec §12/§17) can turn one
+  iteration into several retrieval calls. Query refinement between
+  iterations is deterministic (`original_query + " " + missing_information`)
+  rather than another LLM call — a defensible principle-#1 choice, and one
+  fewer place a bad structured-output response could break the loop.
+  Every run ends in exactly one `TerminationReason`
+  (`sufficient_evidence` / `max_iterations_reached` /
+  `max_retrieval_calls_reached` / `no_evidence_found`).
+- **Two real bugs found and fixed while manually exercising the loop against
+  real Postgres before writing any test** (both are exactly the kind of
+  thing that would have been invisible in a design review, only visible by
+  running it):
+  1. `asyncio.gather()` across query variants / decomposed subqueries, all
+     sharing one `AsyncSession`, threw
+     `InvalidRequestError: This session is provisioning a new connection;
+     concurrent operations are not permitted` — SQLAlchemy's async session
+     is not safe for concurrent use from multiple coroutines. Fixed by
+     retrieving sequentially instead. Spec §12 itself says "execute
+     concurrently *where safe*" — this is the "where safe" carve-out, not
+     a shortcut around the spec.
+  2. A decomposed query's subqueries could burn through
+     `max_retrieval_calls` within a single outer iteration, since the
+     budget check only ran once per iteration, not once per subquery.
+     Fixed by truncating the subquery list to the remaining budget before
+     retrieving.
+- `agents/planner.py`'s `MetadataFilter` reuse pays off here: the API layer
+  passes a caller-supplied `collection_id` in, and it wins over whatever
+  the plan guessed (the LLM/mock has no way to know a real collection ID) —
+  verified end-to-end that retrieval stays correctly scoped to the given
+  collection and returns `NO_EVIDENCE_FOUND` for an empty or wrong one.
+- `generation/mock.py` gained an `EvidenceAssessment`-aware path: it now
+  extracts an `"Evidence:\n..."` block from the prompt (alongside the
+  existing `"Query: ..."` extraction) and judges sufficiency by lexical
+  overlap between query and evidence terms — enough to make "insufficient
+  evidence -> refine -> retry" and "sufficient evidence -> stop"
+  genuinely exercisable offline, not just structurally plausible.
+- `POST /query/retrieve` — a preview endpoint (like `/query/analyze`, not
+  one of spec §29's listed routes) returning the full structured trace and
+  final evidence, no synthesized answer yet. Verified against a running
+  server: querying "Why did revenue decline?" against an indexed document
+  produced a correct one-iteration `sufficient_evidence` trace with real
+  dense/sparse/fusion/rerank scores on the returned evidence.
+- Tests: 136 passing total (added: evidence agent sufficiency heuristics;
+  pure fusion/refinement/dedup helpers; five loop-termination scenarios
+  against real Postgres — sufficient evidence, iteration budget exhausted,
+  empty collection, cross-collection scoping, retrieval-call budget
+  exhausted mid-decomposition; the API route). `ruff` and `mypy --strict`
+  both clean.
+
+### Known gaps from Phase 7
+
+- Nothing from this phase persists to the `queries`/`query_plans`/
+  `retrieval_runs`/`evidence_items` tables yet (all present in the schema
+  since Phase 1) — the loop returns its full trace in-memory/over the API
+  response, but there is no `GET /queries/{id}/trace` to replay a past run.
+  Wiring that up is deferred to the observability phase, where the
+  telemetry/tracing story is actually being built out.
+- Query decomposition treats subqueries as independent parallel retrievals,
+  not a dependency graph — spec §17's example ("identify acquisitions ->
+  identify target companies -> retrieve acquisition values -> ...", where
+  each step's output feeds the next step's query) is not implemented; that
+  is genuinely hard (dependency-aware multi-hop chaining) and was
+  explicitly not attempted here, per the instruction not to turn this
+  project into #5 (the future Deep Research system) prematurely.
+- Evidence sufficiency is still the lightweight version — no contradiction
+  detection, source authority weighting, or temporal-correctness checking
+  yet (Phase 8).
+- The loop always reranks (no way to skip it) and evidence count is a fixed
+  default (8) rather than plan-configurable.
 
 ## Known limitations
 

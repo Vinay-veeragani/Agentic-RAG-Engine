@@ -68,3 +68,13 @@ class QueryStatus(StrEnum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+
+
+class TerminationReason(StrEnum):
+    """Why the agentic retrieval loop (spec §16) stopped iterating. Every
+    run ends in exactly one of these — never a silent/implicit stop."""
+
+    SUFFICIENT_EVIDENCE = "sufficient_evidence"
+    MAX_ITERATIONS_REACHED = "max_iterations_reached"
+    MAX_RETRIEVAL_CALLS_REACHED = "max_retrieval_calls_reached"
+    NO_EVIDENCE_FOUND = "no_evidence_found"

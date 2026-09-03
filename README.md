@@ -4,14 +4,14 @@ An advanced, production-shaped Agentic RAG platform: autonomous knowledge
 retrieval, evidence gathering, verification, and grounded answer generation —
 not a "chat with PDF" demo.
 
-**Status: Phase 6 of 13 complete** (Foundation, ingestion, chunking +
-embeddings, dense/sparse/hybrid retrieval, reranking, then query analysis +
-retrieval planning). Everything below describes what is actually
-implemented today; features from later phases (the agentic loop, evidence
-evaluation, citations, evaluation harness, streaming, frontend) are tracked
-but not yet built. See `docs/architecture.md` for design decisions,
-rationale, and known gaps, and the implementation plan below for what's
-next.
+**Status: Phase 7 of 13 complete** (Foundation, ingestion, chunking +
+embeddings, dense/sparse/hybrid retrieval, reranking, query analysis +
+planning, then the agentic retrieval loop). Everything below describes what
+is actually implemented today; features from later phases (deeper evidence
+evaluation + contradiction detection, answer synthesis, citations,
+evaluation harness, streaming, frontend) are tracked but not yet built. See
+`docs/architecture.md` for design decisions, rationale, and known gaps, and
+the implementation plan below for what's next.
 
 ## What's implemented so far
 
@@ -54,6 +54,11 @@ next.
   configured budget ceilings, never trusting the LLM alone), query
   expansion, and query decomposition, all via a shared LLM provider
   abstraction (mock, local via Ollama, or OpenAI) — `POST /query/analyze`
+- A bounded agentic retrieval loop — plan → retrieve → rerank → judge
+  evidence sufficiency → refine and retry if insufficient, hard-bounded by
+  iteration count and retrieval-call budget (never an infinite loop by
+  construction, not just by convention), ending in one of four explicit
+  termination reasons — `POST /query/retrieve`
 
 ## Local setup
 
@@ -86,7 +91,7 @@ See `docs/architecture.md`.
 4. ✅ Dense + sparse + hybrid retrieval, Reciprocal Rank Fusion
 5. ✅ Reranking
 6. ✅ Query analysis + retrieval planning
-7. Agentic retrieval loop (bounded iteration, refinement)
+7. ✅ Agentic retrieval loop (bounded iteration, refinement)
 8. Evidence evaluation + contradiction detection
 9. Answer synthesis + citations + citation validation
 10. Evaluation framework (baseline vs. agentic RAG benchmark)
@@ -113,9 +118,16 @@ See `docs/architecture.md`.
 - No Anthropic or Gemini LLM provider yet — mock, Ollama (local), and
   OpenAI only; Ollama and OpenAI are implemented but unexercised in this
   environment (no Ollama install, no API key)
-- Query analysis/planning is not wired into retrieval yet — `/query/analyze`
-  is a standalone preview; executing a plan against retrieval is Phase 7
-- Everything past Phase 6 (the agentic loop, evidence evaluation,
-  generation, citations, evaluation) does not exist yet — there is no
-  answer-generation endpoint to call today, only ingestion, indexing,
-  search/retrieve/rerank, query analysis, and `/health`
+- The agentic loop's evidence sufficiency check is still the lightweight
+  version — no contradiction detection, source authority, or temporal
+  reasoning yet (Phase 8)
+- Query decomposition retrieves subqueries independently, not as a
+  dependency chain (spec's "find companies -> then look up their values"
+  multi-hop pattern is not implemented)
+- Nothing from the agentic loop is persisted to the database yet (no
+  `GET /queries/{id}/trace`) — its full trace is only returned in the API
+  response
+- Everything past Phase 7 (deeper evidence evaluation, answer generation,
+  citations, evaluation) does not exist yet — there is no answer-generation
+  endpoint to call today, only ingestion, indexing, search/retrieve/rerank,
+  query analysis, the agentic retrieval loop, and `/health`
