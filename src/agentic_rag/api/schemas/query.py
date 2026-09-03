@@ -100,6 +100,8 @@ class QueryResponse(BaseModel):
 
     query: str
     trace_id: str
+    analysis: QueryAnalysis
+    plan: RetrievalPlan
     status: AnswerStatus
     answer: str | None
     citations: list[CitationResponse]

@@ -224,6 +224,8 @@ async def _run_query_pipeline(
     return QueryResponse(
         query=loop_result.query,
         trace_id=loop_result.trace_id,
+        analysis=loop_result.analysis,
+        plan=loop_result.plan,
         status=status,
         answer=answer,
         citations=citations,

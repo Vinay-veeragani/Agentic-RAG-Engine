@@ -4,14 +4,28 @@ An advanced, production-shaped Agentic RAG platform: autonomous knowledge
 retrieval, evidence gathering, verification, and grounded answer generation —
 not a "chat with PDF" demo.
 
-**Status: Phase 11 of 13 complete** (Foundation, ingestion, chunking +
+**Status: Phase 12 of 13 complete** (Foundation, ingestion, chunking +
 embeddings, dense/sparse/hybrid retrieval, reranking, query analysis +
 planning, the agentic retrieval loop, deeper evidence evaluation, answer
-synthesis + citations, the evaluation framework, then observability +
-streaming). Everything below describes what is actually implemented today;
-the frontend (Phase 12) is tracked but not yet built. See
-`docs/architecture.md` for design decisions, rationale, and known gaps, and
-the implementation plan below for what's next.
+synthesis + citations, the evaluation framework, observability + streaming,
+then the full Next.js frontend). Everything below describes what is
+actually implemented today; only security/reliability/performance hardening
+(Phase 13) remains. See `docs/architecture.md` for design decisions,
+rationale, and known gaps, and the implementation plan below for what's
+next.
+
+## Frontend
+
+The full spec §37 UI lives under `frontend/` — Next.js + TypeScript +
+Tailwind + shadcn/ui + TanStack Query + Zustand, with all 9 sections
+(Knowledge, Collections, Documents, Search, Ask, Retrieval Traces,
+Evaluations, Observability, Settings) and the signature `/ask` page's
+expandable retrieval trace + Developer Mode. See
+`docs/architecture.md`'s "Phase 12" section for what was built, a real
+base-ui-vs-Radix API gotcha it surfaced, and how it was verified.
+
+To run it locally: start the backend (`uvicorn agentic_rag.api.main:app
+--reload`), then from `frontend/`, `npm install` and `npm run dev`.
 
 ## What's implemented so far
 
@@ -236,4 +250,9 @@ See `docs/architecture.md`.
   traces
 - No cost estimation — token/cache instruments exist but nothing converts
   them into an estimated dollar figure
-- Everything past Phase 11 (the frontend) does not exist yet
+- The frontend has not been visually verified in an actual browser (no
+  browser-automation tool was available) — HTTP-level and type-checking
+  verification only; see `docs/architecture.md`'s Phase 12 section
+- No frontend automated tests (component tests, e2e)
+- Everything past Phase 12 (security/reliability/performance hardening,
+  Phase 13) does not exist yet

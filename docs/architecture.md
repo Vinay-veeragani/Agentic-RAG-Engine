@@ -894,6 +894,103 @@ is available in this environment — see below.
 - No cost estimation — cache hit/miss and token-count instruments exist,
   but nothing converts them into an estimated dollar cost per query.
 
+## What's implemented (Phase 12)
+
+The full spec §37 frontend: Next.js 16.3.4 (App Router, Turbopack) + React +
+TypeScript + Tailwind CSS v4 + shadcn/ui (base-ui primitives under the hood,
+not Radix — see below) + TanStack Query v5 + Zustand, under `frontend/`.
+
+- **Backend additions made to support it**: `CORSMiddleware` registered
+  with a configurable `cors_allow_origins` setting (default
+  `http://localhost:3000`); `GET /collections/{id}`; `GET /settings`
+  (non-secret config only — provider names and budget ceilings, never
+  secrets); `GET /evaluations/latest` and `/evaluations/latest/summary`
+  (raw pass-through of the Phase 10 benchmark report); `QueryResponse` now
+  also returns `analysis` and `plan` so the frontend's retrieval-trace view
+  doesn't have to re-derive them. All 199 backend tests, `ruff`, and
+  `mypy --strict` still pass after these additions.
+- **Nine pages**, one per spec §37 section: `/` (Knowledge dashboard),
+  `/collections` (list + create, including `source_authority_order`),
+  `/documents` (per-collection upload + explicit ingest trigger, showing
+  the real `DocumentIndexResponse` chunk counts), `/search` (direct hybrid
+  retrieval with per-result score breakdowns, no agentic loop), `/ask`
+  (the signature feature, below), `/traces` (look up a trace ID and render
+  its raw structured event timeline), `/evaluations` (the real Phase 10
+  baseline-vs-agentic benchmark, rendered as a comparison table — no
+  fabricated numbers, it fetches the same `benchmarks/results/latest.json`
+  the backend serves), `/observability` (live health + raw `/metrics`
+  text), `/settings` (read-only server config + the Developer Mode
+  toggle).
+- **`/ask`** renders the answer, `StatusBadge` (`AnswerStatus` /
+  `TerminationReason`), `CitationList`, and an accordion `RetrievalTrace`
+  covering every stage the backend actually returns structured data for —
+  query classification, retrieval plan, then per-iteration search →
+  hybrid fusion → reranking → evidence evaluation (including any detected
+  contradictions and their resolution) → refinement, then final
+  synthesis/citation-validation metrics. There is no chain-of-thought
+  section because the backend never produces one to show.
+- **Developer Mode** (Zustand + `persist`, toggled from `/settings` or the
+  header): reveals trace ID, termination reason, strategy, top K, max
+  iterations, iterations used, retrieval+rerank latency, the three
+  configured provider names (fetched from `/settings`), and a collapsible
+  raw JSON dump of the full response.
+- **SSE**: `api.query.stream()` posts to `/query/stream` and parses
+  `data: ` lines off a raw `ReadableStream` reader rather than
+  `EventSource`, since the endpoint is POST-based and `EventSource` only
+  supports GET.
+- Shared infrastructure: `lib/types.ts` (hand-written mirror of the
+  backend's Pydantic response schemas — no live-server codegen, since the
+  backend is still evolving phase by phase), `lib/api.ts` (typed fetch
+  wrapper + `ApiError`), a module-level singleton `QueryClient` per the
+  current official Next.js TanStack Query guidance, and a `CollectionSelect`
+  shared across Documents/Search/Ask.
+
+### A real, non-obvious discovery from actually building this
+
+shadcn/ui's CLI-scaffolded `Button` and `Accordion` in this project's
+installed version are built on **base-ui**, not Radix — its API differs in
+two places this project hit immediately: `Button` has no `asChild` prop
+(base-ui uses a `render={<Link .../>}` prop instead), and
+`Accordion.Root` has no `type="multiple"` prop (it takes a plain
+`multiple` boolean, with `defaultValue`/`value` as an array either way).
+Both were caught by `next build`'s TypeScript pass, not by inspection —
+worth calling out because assuming Radix's API here would have shipped
+silently broken interactivity.
+
+### Verification performed
+
+- `npm run build` — compiles and full-project type-checks cleanly,
+  statically generates all 9 routes plus `/`.
+- `npx eslint .` — clean.
+- Backend: `pytest -q` (199 passed), `ruff check src` (clean), `mypy src`
+  (clean) — re-run after the `QueryResponse` schema addition.
+- End-to-end HTTP-level check (no browser-automation tool was available in
+  this session, so this is the closest verification possible without one):
+  started the real FastAPI backend and the Next.js dev server together,
+  confirmed all 9 pages return `200` with the expected server-rendered
+  markup (headings, form labels, initial loading states), and confirmed
+  `/health`, `/collections`, `/settings`, and `/evaluations/latest` return
+  correctly-shaped JSON matching `lib/types.ts` against a real local
+  database with real ingested data. This does **not** substitute for
+  actually clicking through the UI in a browser — that step is still
+  outstanding and should be done manually before considering Phase 12
+  fully verified.
+
+### Known gaps from Phase 12
+
+- No actual browser/visual verification — see above.
+- No frontend automated tests (component tests, Playwright/e2e) — spec
+  §37 doesn't explicitly require them, but "comprehensive testing" from
+  the top-level spec technically extends to the frontend and this is not
+  yet covered.
+- The evaluation and trace pages assume the artifacts already exist
+  (`benchmarks/results/latest.json`, a known trace ID) — there's no UI
+  affordance yet to *trigger* a new benchmark run or discover trace IDs
+  other than pasting one from an Ask response.
+- Document upload/ingest is a manual two-step (`upload` then `Ingest`
+  button) with no progress indicator for large files — acceptable for a
+  phase-scoped implementation, not production-polished.
+
 ## Known limitations
 
 - No CI pipeline yet.
