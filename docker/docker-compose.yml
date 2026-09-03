@@ -1,0 +1,60 @@
+# Maintained for CI and for future use on a machine that can run Docker.
+#
+# Local day-to-day development on this machine does NOT use this file — it
+# uses a native Windows PostgreSQL 18 install (with pgvector 0.8.6 enabled
+# manually) plus a managed free-tier Redis instance, both addressed purely via
+# DATABASE_URL / REDIS_URL. See docs/architecture.md "Local development" for
+# why, and .env.example for the env vars this stack expects once it IS run.
+#
+# To use this stack (once Docker is available):
+#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -f docker/docker-compose.yml exec backend alembic upgrade head
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: agentic_rag
+      POSTGRES_USER: agentic_rag_app
+      POSTGRES_PASSWORD: agentic_rag_dev_pw
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentic_rag_app -d agentic_rag"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      APP_ENV: local
+      DATABASE_URL: postgresql+asyncpg://agentic_rag_app:agentic_rag_dev_pw@postgres:5432/agentic_rag
+      REDIS_URL: redis://redis:6379/0
+      LLM_PROVIDER: mock
+      EMBEDDING_PROVIDER: mock
+      RERANKER_PROVIDER: mock
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
