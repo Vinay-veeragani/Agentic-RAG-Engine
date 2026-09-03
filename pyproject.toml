@@ -24,6 +24,8 @@ dependencies = [
     "python-docx>=1.1",
     "beautifulsoup4>=4.12",
     "markdown-it-py>=3.0",
+    "sentence-transformers>=3.0",
+    "numpy>=1.26",
 ]
 
 [project.optional-dependencies]
@@ -71,9 +73,10 @@ namespace_packages = true
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-# PyMuPDF ships without type stubs/py.typed; every call into it looks
-# "untyped" to strict mypy regardless of how this module's own code is typed.
-module = "agentic_rag.ingestion.parsers.pdf"
+# PyMuPDF and sentence-transformers ship without type stubs/py.typed; every
+# call into them looks "untyped" to strict mypy regardless of how this
+# module's own code is typed.
+module = ["agentic_rag.ingestion.parsers.pdf", "agentic_rag.embeddings.local"]
 disallow_untyped_calls = false
 warn_return_any = false
 

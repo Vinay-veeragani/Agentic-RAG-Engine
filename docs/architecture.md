@@ -1,8 +1,8 @@
 # Architecture
 
-Status: Phase 2 (Document ingestion) complete, on top of Phase 1 (Foundation +
-database + configuration). This document will grow with each phase; it only
-describes what is actually implemented.
+Status: Phase 3 (Chunking + embeddings + indexing) complete, on top of
+Phase 1 (Foundation) and Phase 2 (Document ingestion). This document will
+grow with each phase; it only describes what is actually implemented.
 
 ## Design decisions
 
@@ -154,6 +154,77 @@ chosen for dependency stability; nothing in the codebase depends on a
   count) rather than silent success, but is not implemented yet.
 - Caption detection (spec §5) is only implemented for HTML `<figcaption>`;
   PDF/DOCX captions are not distinguished from regular paragraphs.
+
+## What's implemented (Phase 3)
+
+- `chunking/tokenization.py` — a fully offline, dependency-free tokenizer
+  (whitespace-vs-non-whitespace runs), used instead of `tiktoken`. `tiktoken`
+  needs to download its BPE merge table from a Microsoft blob-storage host on
+  first use; that host turned out to be unreachable from this machine's
+  Python specifically (DNS resolution fails for it even though PyPI and every
+  other host used so far — Hugging Face Hub included — resolve fine). Rather
+  than have chunk-token-budgeting depend on a network fetch, token counting
+  is a small rule-based splitter: exactly reversible
+  (`"".join(encode(text)) == text`), deterministic, but an approximation of
+  any real LLM's actual subword tokenizer, not an exact match. If `tiktoken`
+  becomes reachable in some environment this runs in, swapping it back in is
+  contained to this one file.
+- Four chunkers behind one `Chunker` protocol (`chunking/`): `FixedSizeChunker`
+  (pure token-count sliding window, ignores structure — the baseline),
+  `RecursiveChunker` (accumulates whole elements up to the token budget,
+  recursively splits an oversized single element on a separator hierarchy),
+  `StructuralChunker` (the default — groups elements into contiguous
+  same-heading runs and never merges across a heading boundary; an oversized
+  section gets one parent chunk covering the whole section plus child chunks
+  from `RecursiveChunker`), and `SemanticChunker` (embeds sentences and
+  breaks on a cosine-similarity drop *or* the token budget, whichever comes
+  first — the one chunker that genuinely needs an embedding call rather than
+  pure deterministic logic, per engineering principle #2).
+- Parent/child chunk resolution (`chunking/pipeline.py`): chunks are flushed
+  once to get real database-assigned UUIDs, *then* `parent_chunk_id` is
+  resolved and a second flush persists it — SQLAlchemy applies a column's
+  Python-side `default=` callable at flush time, not at object construction,
+  so resolving parent references before the first flush silently produced
+  `NULL` (`chunk.id` reads back `None` until flushed). Caught by an
+  integration test asserting actual persisted `parent_chunk_id` values, not
+  just the in-memory `ChunkCandidate.parent_index`.
+- `embeddings/` — `EmbeddingProvider` protocol; `LocalEmbeddingProvider`
+  (sentence-transformers `all-MiniLM-L6-v2`, 384-dim, CPU, runs in a thread
+  via `asyncio.to_thread` since the library is synchronous); `MockEmbeddingProvider`
+  (deterministic hash-seeded unit vectors, no model/network — default for
+  tests and local dev); `OpenAIEmbeddingProvider` (plain `httpx` call to
+  OpenAI's REST endpoint rather than pulling in the `openai` SDK for one call
+  site; requests `dimensions=384` explicitly via OpenAI's Matryoshka
+  truncation support so it matches the fixed pgvector column width regardless
+  of which provider is configured).
+- `embeddings/cache.py` — `CachedEmbeddingProvider` wraps any provider behind
+  the shared cache client (Redis or in-memory), keyed by model name + text
+  hash, so switching models never serves another model's stale vector.
+- `POST /documents/{id}/ingest` — chunks + embeds + persists `DocumentChunk`
+  rows for a document version (deliberately separate from `POST /documents`,
+  which only parses + stores metadata); accepts optional per-call overrides
+  for strategy/chunk size/overlap/similarity threshold, defaulting to the
+  platform config. Verified against the real local Postgres+pgvector and via
+  an actual HTTP request to a running server.
+- Tests: 58 passing total (added: unit tests for all four chunkers including
+  parent/child structure and oversized-element splitting, embedding provider
+  determinism/caching; integration tests for the persisted chunk+embedding
+  round trip through pgvector and the `/ingest` API). `ruff` and
+  `mypy --strict` both clean.
+
+### Known gaps from Phase 3
+
+- `SemanticChunker`'s sentence splitting is a simple punctuation-based regex,
+  not a real sentence boundary detector — it will mis-split on abbreviations
+  ("e.g.", "Dr.") the way most lightweight splitters do.
+- No embedding-model-dimension migration tooling — switching
+  `EMBEDDING_DIMENSIONS` (e.g. to use a different local or remote model)
+  still means writing a new Alembic migration and re-embedding by hand; see
+  the note on this in the Phase 1 section above.
+- `OpenAIEmbeddingProvider` is implemented but unexercised by any test that
+  calls the real OpenAI API (no key configured in this environment) — its
+  request/response shape is verified against OpenAI's documented API, not
+  against a live call.
 
 ## Known limitations
 
