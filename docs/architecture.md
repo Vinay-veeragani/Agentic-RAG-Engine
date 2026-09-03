@@ -1,11 +1,11 @@
 # Architecture
 
-Status: Phase 7 (Agentic retrieval loop) complete, on top of Phase 1
-(Foundation), Phase 2 (Ingestion), Phase 3 (Chunking + embeddings +
-indexing), Phase 4 (Dense + sparse + hybrid retrieval, RRF), Phase 5
-(Reranking), and Phase 6 (Query analysis + retrieval planning). This
-document will grow with each phase; it only describes what is actually
-implemented.
+Status: Phase 8 (Evidence evaluation + contradiction detection) complete,
+on top of Phase 1 (Foundation), Phase 2 (Ingestion), Phase 3 (Chunking +
+embeddings + indexing), Phase 4 (Dense + sparse + hybrid retrieval, RRF),
+Phase 5 (Reranking), Phase 6 (Query analysis + retrieval planning), and
+Phase 7 (Agentic retrieval loop). This document will grow with each phase;
+it only describes what is actually implemented.
 
 ## Design decisions
 
@@ -500,6 +500,89 @@ chosen for dependency stability; nothing in the codebase depends on a
   yet (Phase 8).
 - The loop always reranks (no way to skip it) and evidence count is a fixed
   default (8) rather than plan-configurable.
+
+## What's implemented (Phase 8)
+
+- `agents/evidence_agent.py` grew from Phase 7's lightweight sufficiency
+  check into the fuller spec §15 judgment, split by how much genuine
+  reasoning each piece needs (principle #1/#2):
+  - **Relevance/coverage/directness** (spec §15): added as LLM-judged
+    0.0-1.0 fields on `EvidenceAssessment`, alongside the existing
+    sufficient/reason/missing_information.
+  - **Contradiction detection** (spec §18): fully deterministic — regex
+    extracts `(metric keyword, percentage)` pairs (e.g. "revenue ... 4%")
+    from evidence content; two different values for the same keyword from
+    *different* documents is a `Contradiction`. This does not attempt
+    general semantic contradiction detection (two sources disagreeing in
+    prose with no shared number) — that would need real LLM reasoning and
+    is a documented gap. What it does catch matches this spec section's own
+    worked example ("Revenue declined 4%.") exactly, and works identically
+    for every provider including the mock, since it's not an LLM call at all.
+  - **Source authority** (spec §20): `Collection.source_authority_config`
+    (a schema column that existed since Phase 1 but was unused until now)
+    holds a per-collection `{"order": [...]}` list of source labels,
+    most-to-least authoritative — configurable via
+    `POST /collections {"source_authority_order": [...]}`, never hardcoded
+    as universally correct. A `Contradiction.resolution` is set *only* when
+    the two sources' configured ranks actually differ — a
+    provenance-based preference, explicitly not a claim about which
+    content is factually correct. Equal or unclassified ranks leave
+    `resolution=None`, surfacing the conflict as-is rather than inventing
+    one (spec §18: "if the system cannot resolve the conflict, tell the
+    user explicitly").
+  - **Temporal awareness** (spec §19): regex year extraction across
+    evidence content, surfaced as `years_referenced`/`spans_multiple_periods`
+    — informational for now, not a hard block on mixing periods.
+  - `Document.source` (existing column, previously always `None`) is now
+    settable at upload (`POST /documents` gained a `source` form field,
+    e.g. `"Annual Report"`) and threaded through every retriever into
+    `RetrievedCandidate.document_source`, which authority resolution reads.
+- `agents/research_agent.py`: the loop now calls `EvidenceAgent.evaluate()`
+  (not the old `assess()`) and builds the evidence agent *per run*, loading
+  the target collection's authority config first. An **unresolved**
+  contradiction ends the run immediately with the new
+  `TerminationReason.CONFLICTING_EVIDENCE` — refining the search query
+  cannot fix two sources genuinely disagreeing, so continuing would just
+  burn iteration budget pretending the problem is retrieval quality. A
+  contradiction the authority policy *does* resolve does not block the
+  loop; it's still surfaced in the iteration trace either way.
+- **A real bug found and fixed by manually exercising authority resolution
+  end-to-end before trusting the feature**: `retrieval/hybrid.py`'s
+  `_merge()` (written in Phase 4, before `document_source` existed)
+  rebuilt each `RetrievedCandidate` field-by-field and simply didn't
+  include it, so hybrid retrieval silently dropped source information dense
+  and sparse retrieval both populated correctly. Caught because a
+  same-scenario authority-resolution test failed with `resolution=None`
+  when it should have resolved — invisible without actually running the
+  full retrieve→evaluate path, not something a unit test of `_merge` in
+  isolation would have caught either, since that test would need to know
+  to check this specific field. Fixed, and a regression test now asserts
+  `document_source` survives hybrid fusion specifically.
+- Tests: 147 passing total (added: contradiction detection — cross-document
+  numeric conflicts, same-document exclusion, authority-based resolution,
+  unclassified sources; relevance/coverage/directness scoring; year
+  extraction; five new loop/API scenarios for conflicting vs.
+  authority-resolved evidence; the hybrid-fusion regression test). `ruff`
+  and `mypy --strict` both clean.
+
+### Known gaps from Phase 8
+
+- Contradiction detection only catches numeric claims sharing one of a
+  small fixed set of keywords (revenue/profit/margin/growth/decline/
+  earnings/sales/income) framed as a percentage. Non-numeric semantic
+  contradictions, contradictions in absolute figures (not just
+  percentages), and contradictions using unlisted keywords are not
+  detected — a real limitation of the deterministic-only approach, traded
+  for it working identically and reliably regardless of which LLM
+  provider (or the mock) is configured.
+- Temporal awareness is informational only — a query spanning multiple
+  years doesn't get special handling beyond being visible in the trace;
+  spec §19's stronger requirement ("must produce temporally separated
+  evidence") isn't implemented.
+- `Contradiction.resolution` text is a fixed template, not model-generated
+  — deliberate (spec §18 says never invent a resolution), but means the
+  same two-source conflict always produces identically-worded resolution
+  text.
 
 ## Known limitations
 

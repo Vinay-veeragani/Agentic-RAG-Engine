@@ -10,6 +10,7 @@ class DocumentResponse(BaseModel):
     id: uuid.UUID
     collection_id: uuid.UUID
     title: str | None
+    source: str | None
     filename: str
     document_type: str
     checksum: str

@@ -32,6 +32,16 @@ class AgenticRetrieveRequest(BaseModel):
     collection_id: uuid.UUID | None = None
 
 
+class ContradictionResponse(BaseModel):
+    claim_a: str
+    claim_b: str
+    document_a: str
+    document_b: str
+    chunk_id_a: uuid.UUID
+    chunk_id_b: uuid.UUID
+    resolution: str | None
+
+
 class IterationTraceResponse(BaseModel):
     iteration: int
     queries_used: list[str]
@@ -40,6 +50,9 @@ class IterationTraceResponse(BaseModel):
     sufficient: bool
     reason: str
     missing_information: list[str]
+    contradictions: list[ContradictionResponse]
+    years_referenced: list[int]
+    spans_multiple_periods: bool
 
 
 class AgenticRetrieveResponse(BaseModel):

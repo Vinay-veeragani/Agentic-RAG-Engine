@@ -4,11 +4,11 @@ An advanced, production-shaped Agentic RAG platform: autonomous knowledge
 retrieval, evidence gathering, verification, and grounded answer generation —
 not a "chat with PDF" demo.
 
-**Status: Phase 7 of 13 complete** (Foundation, ingestion, chunking +
+**Status: Phase 8 of 13 complete** (Foundation, ingestion, chunking +
 embeddings, dense/sparse/hybrid retrieval, reranking, query analysis +
-planning, then the agentic retrieval loop). Everything below describes what
-is actually implemented today; features from later phases (deeper evidence
-evaluation + contradiction detection, answer synthesis, citations,
+planning, the agentic retrieval loop, then deeper evidence evaluation +
+contradiction detection). Everything below describes what is actually
+implemented today; features from later phases (answer synthesis, citations,
 evaluation harness, streaming, frontend) are tracked but not yet built. See
 `docs/architecture.md` for design decisions, rationale, and known gaps, and
 the implementation plan below for what's next.
@@ -59,6 +59,13 @@ the implementation plan below for what's next.
   iteration count and retrieval-call budget (never an infinite loop by
   construction, not just by convention), ending in one of four explicit
   termination reasons — `POST /query/retrieve`
+- Deeper evidence evaluation: relevance/coverage/directness scoring,
+  deterministic cross-document contradiction detection (never invents a
+  resolution — only resolves via a per-collection configurable source
+  authority order, e.g. Annual Report > Press Release), and temporal-spread
+  awareness. An unresolved contradiction stops the loop immediately with an
+  explicit `conflicting_evidence` reason rather than pretending the
+  evidence is fine
 
 ## Local setup
 
@@ -92,7 +99,7 @@ See `docs/architecture.md`.
 5. ✅ Reranking
 6. ✅ Query analysis + retrieval planning
 7. ✅ Agentic retrieval loop (bounded iteration, refinement)
-8. Evidence evaluation + contradiction detection
+8. ✅ Evidence evaluation + contradiction detection
 9. Answer synthesis + citations + citation validation
 10. Evaluation framework (baseline vs. agentic RAG benchmark)
 11. Observability (OpenTelemetry/metrics) + SSE streaming
@@ -118,16 +125,21 @@ See `docs/architecture.md`.
 - No Anthropic or Gemini LLM provider yet — mock, Ollama (local), and
   OpenAI only; Ollama and OpenAI are implemented but unexercised in this
   environment (no Ollama install, no API key)
-- The agentic loop's evidence sufficiency check is still the lightweight
-  version — no contradiction detection, source authority, or temporal
-  reasoning yet (Phase 8)
+- Contradiction detection only catches numeric percentage claims sharing a
+  small fixed set of keywords (revenue/profit/margin/growth/decline/
+  earnings/sales/income) — non-numeric semantic contradictions aren't
+  detected; that would need real LLM reasoning and is a deliberate,
+  documented tradeoff for something that works identically regardless of
+  which LLM provider (or the mock) is configured
+- Temporal awareness is informational only — evidence spanning multiple
+  years is visible in the trace but not specially separated/handled
 - Query decomposition retrieves subqueries independently, not as a
   dependency chain (spec's "find companies -> then look up their values"
   multi-hop pattern is not implemented)
 - Nothing from the agentic loop is persisted to the database yet (no
   `GET /queries/{id}/trace`) — its full trace is only returned in the API
   response
-- Everything past Phase 7 (deeper evidence evaluation, answer generation,
-  citations, evaluation) does not exist yet — there is no answer-generation
-  endpoint to call today, only ingestion, indexing, search/retrieve/rerank,
-  query analysis, the agentic retrieval loop, and `/health`
+- Everything past Phase 8 (answer generation, citations, evaluation) does
+  not exist yet — there is no answer-generation endpoint to call today,
+  only ingestion, indexing, search/retrieve/rerank, query analysis, the
+  agentic retrieval loop with evidence evaluation, and `/health`

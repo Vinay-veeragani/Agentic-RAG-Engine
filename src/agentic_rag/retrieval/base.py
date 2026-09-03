@@ -46,6 +46,7 @@ class RetrievedCandidate:
     heading: str | None
     document_filename: str
     document_title: str | None
+    document_source: str | None = None
     dense_score: float | None = None
     sparse_score: float | None = None
     fusion_score: float | None = None

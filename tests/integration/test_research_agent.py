@@ -21,7 +21,9 @@ def object_store(tmp_path):
     return LocalFileObjectStore(tmp_path)
 
 
-async def _index_text(db_session, object_store, collection_id, filename: str, text: str) -> None:
+async def _index_text(
+    db_session, object_store, collection_id, filename: str, text: str, *, source: str | None = None
+) -> None:
     result = await ingest_document(
         session=db_session,
         object_store=object_store,
@@ -29,6 +31,7 @@ async def _index_text(db_session, object_store, collection_id, filename: str, te
         filename=filename,
         content=text.encode(),
         title=None,
+        source=source,
         max_upload_size_bytes=1_000_000,
     )
     config = ChunkingConfig(strategy=ChunkingStrategy.STRUCTURAL, chunk_size_tokens=100)
@@ -148,3 +151,61 @@ async def test_loop_respects_max_retrieval_calls_budget(db_session, object_store
     # must stop before a second retrieval happens.
     assert len(result.iterations) == 1
     assert result.termination_reason == TerminationReason.MAX_RETRIEVAL_CALLS_REACHED
+
+
+@pytest.mark.asyncio
+async def test_loop_terminates_with_conflicting_evidence_when_unresolved(
+    db_session, object_store
+) -> None:
+    collection = Collection(name=f"col-{uuid.uuid4().hex[:8]}")
+    db_session.add(collection)
+    await db_session.flush()
+
+    await _index_text(
+        db_session, object_store, collection.id, "a.txt", "Revenue declined 4% in Q3."
+    )
+    await _index_text(
+        db_session, object_store, collection.id, "b.txt", "Revenue declined 9% in Q3."
+    )
+
+    result = await _loop(db_session).run("what happened to revenue", collection_id=collection.id)
+
+    assert result.termination_reason == TerminationReason.CONFLICTING_EVIDENCE
+    assert len(result.iterations) == 1
+    assert result.iterations[0].contradictions
+    assert result.iterations[0].contradictions[0].resolution is None
+
+
+@pytest.mark.asyncio
+async def test_loop_does_not_stop_on_conflict_resolved_by_source_authority(
+    db_session, object_store
+) -> None:
+    collection = Collection(
+        name=f"col-{uuid.uuid4().hex[:8]}",
+        source_authority_config={"order": ["annual report", "press release"]},
+    )
+    db_session.add(collection)
+    await db_session.flush()
+
+    await _index_text(
+        db_session,
+        object_store,
+        collection.id,
+        "annual.txt",
+        "Revenue declined 4% in Q3.",
+        source="Annual Report",
+    )
+    await _index_text(
+        db_session,
+        object_store,
+        collection.id,
+        "press.txt",
+        "Revenue declined 9% in Q3.",
+        source="Press Release",
+    )
+
+    result = await _loop(db_session).run("what happened to revenue", collection_id=collection.id)
+
+    assert result.termination_reason != TerminationReason.CONFLICTING_EVIDENCE
+    assert result.iterations[0].contradictions
+    assert result.iterations[0].contradictions[0].resolution is not None

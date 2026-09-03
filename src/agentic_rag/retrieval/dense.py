@@ -55,6 +55,7 @@ class DenseRetriever:
                     heading=chunk.heading,
                     document_filename=document.filename,
                     document_title=document.title,
+                    document_source=document.source,
                     dense_score=similarity,
                 )
             )

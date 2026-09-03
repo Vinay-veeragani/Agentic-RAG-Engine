@@ -74,6 +74,7 @@ def _merge(
         heading=base.heading,
         document_filename=base.document_filename,
         document_title=base.document_title,
+        document_source=base.document_source,
         dense_score=dense.dense_score if dense else None,
         sparse_score=sparse.sparse_score if sparse else None,
         fusion_score=fusion_score,

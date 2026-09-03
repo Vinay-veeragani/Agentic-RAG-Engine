@@ -51,6 +51,7 @@ class SparseRetriever:
                 heading=chunk.heading,
                 document_filename=document.filename,
                 document_title=document.title,
+                document_source=document.source,
                 sparse_score=float(rank_value),
             )
             for chunk, document, rank_value in rows

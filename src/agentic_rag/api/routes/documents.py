@@ -35,6 +35,9 @@ async def upload_document(
     collection_id: uuid.UUID = Form(...),
     file: UploadFile = File(...),
     title: str | None = Form(None),
+    source: str | None = Form(
+        None, description="e.g. 'Annual Report', 'Press Release' — used for source authority."
+    ),
 ) -> DocumentIngestResponse:
     content = await file.read()
     result = await ingest_document(
@@ -43,6 +46,7 @@ async def upload_document(
         collection_id=collection_id,
         filename=file.filename or "upload",
         content=content,
+        source=source,
         title=title,
         max_upload_size_bytes=get_settings().max_upload_size_bytes,
     )

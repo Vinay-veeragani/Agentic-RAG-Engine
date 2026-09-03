@@ -94,20 +94,26 @@ def _derive_subqueries(query: str) -> list[str]:
     return parts[:8] if len(parts) > 1 else [query.strip() or "query"]
 
 
+def _term_overlap_ratio(ctx: _Context) -> float:
+    """Heuristic stand-in for real evidence judgment: lexical overlap
+    between the query and the evidence text, as a fraction of query terms
+    found in the evidence. Not semantically meaningful — same caveat as
+    every other mock in this codebase — but lets tests exercise
+    "insufficient evidence -> refine -> retry" without a real model, by
+    simply retrieving evidence that doesn't share query terms."""
+    if not ctx.evidence.strip():
+        return 0.0
+    query_terms = {w for w in ctx.query.lower().split() if len(w) > 2}
+    if not query_terms:
+        return 1.0
+    evidence_terms = set(ctx.evidence.lower().split())
+    return len(query_terms & evidence_terms) / len(query_terms)
+
+
 def _is_evidence_sufficient(ctx: _Context) -> bool:
-    """Heuristic stand-in for real evidence judgment: some minimal lexical
-    overlap between the query and the evidence text. Not semantically
-    meaningful — same caveat as every other mock in this codebase — but
-    lets tests exercise "insufficient evidence -> refine -> retry" without a
-    real model, by simply retrieving evidence that doesn't share query terms."""
     if not ctx.evidence.strip():
         return False
-    query_terms = {w for w in ctx.query.lower().split() if len(w) > 2}
-    evidence_terms = set(ctx.evidence.lower().split())
-    if not query_terms:
-        return True
-    overlap = len(query_terms & evidence_terms)
-    return overlap >= max(1, len(query_terms) // 3)
+    return _term_overlap_ratio(ctx) >= 0.25
 
 
 def _missing_information(ctx: _Context) -> list[str]:
@@ -150,6 +156,9 @@ _FIELD_NAME_RULES: dict[str, Any] = {
     "candidate_pool_size": lambda ctx: 30,
     "sufficient": _is_evidence_sufficient,
     "missing_information": _missing_information,
+    "relevance": _term_overlap_ratio,
+    "coverage": _term_overlap_ratio,
+    "directness": _term_overlap_ratio,
 }
 
 # Nested model types that should get their own (mostly-empty) default rather

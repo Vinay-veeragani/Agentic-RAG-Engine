@@ -1,6 +1,6 @@
 """The agentic retrieval loop (spec §16): plan -> retrieve -> rerank ->
 evaluate evidence -> if insufficient, refine and retry -> stop when
-sufficient or budget exhausted.
+sufficient, contradictory, or budget exhausted.
 
 Hard-bounded by construction: the loop body runs inside
 `for iteration in range(1, plan.max_iterations + 1)`, and `plan.max_iterations`
@@ -12,19 +12,25 @@ iteration in case a single query expands into many retrieval calls (spec
 §12's concurrent subquery execution). Every run ends in exactly one
 `TerminationReason` — never a silent stop.
 
+An unresolved contradiction between sources (spec §18) ends the run
+immediately rather than looping — refining the search query cannot fix two
+sources genuinely disagreeing, so retrying would just waste budget pretending
+the problem is retrieval quality.
+
 No hidden chain-of-thought is exposed: `AgenticRetrievalResult` carries
 structured `IterationTrace`s (queries used, strategy, candidate count,
-sufficiency verdict, reason, missing information) and nothing else.
+sufficiency verdict, reason, missing information, contradictions, temporal
+spread) and nothing else.
 """
 
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentic_rag.agents.evidence_agent import EvidenceAgent
+from agentic_rag.agents.evidence_agent import Contradiction, EvidenceAgent
 from agentic_rag.agents.planner import QueryDecomposer, RetrievalPlan, RetrievalPlanner
 from agentic_rag.agents.query_analyzer import QueryAnalysis, QueryAnalyzer, QueryExpander
 from agentic_rag.agents.retrieval_agent import RetrievalAgent
@@ -35,6 +41,7 @@ from agentic_rag.generation.llm import LLMProvider
 from agentic_rag.observability.tracing import bind_trace_id
 from agentic_rag.retrieval.base import RetrievedCandidate
 from agentic_rag.retrieval.reranking import Reranker
+from agentic_rag.storage.models import Collection
 
 
 @dataclass(slots=True)
@@ -46,6 +53,9 @@ class IterationTrace:
     sufficient: bool
     reason: str
     missing_information: list[str]
+    contradictions: list[Contradiction] = field(default_factory=list)
+    years_referenced: list[int] = field(default_factory=list)
+    spans_multiple_periods: bool = False
 
 
 @dataclass(slots=True)
@@ -69,6 +79,8 @@ class AgenticRetrievalLoop:
         reranker: Reranker,
         settings: Settings,
     ) -> None:
+        self._session = session
+        self._llm = llm
         self._settings = settings
         self._analyzer = QueryAnalyzer(llm)
         self._planner = RetrievalPlanner(
@@ -76,13 +88,14 @@ class AgenticRetrievalLoop:
         )
         self._expander = QueryExpander(llm)
         self._decomposer = QueryDecomposer(llm)
-        self._evidence_agent = EvidenceAgent(llm)
         self._retrieval_agent = RetrievalAgent(session, embedding_provider, reranker)
 
     async def run(
         self, query_text: str, *, collection_id: uuid.UUID | None = None
     ) -> AgenticRetrievalResult:
         trace_id = bind_trace_id()
+
+        evidence_agent = await self._build_evidence_agent(collection_id)
 
         analysis = await self._analyzer.analyze(query_text)
         plan = await self._planner.plan(query_text, analysis)
@@ -131,7 +144,8 @@ class AgenticRetrievalLoop:
                 queries_used = current_queries
 
             evidence = candidates
-            assessment = await self._evidence_agent.assess(query_text, candidates)
+            evaluation = await evidence_agent.evaluate(query_text, candidates)
+            assessment = evaluation.assessment
             iterations.append(
                 IterationTrace(
                     iteration=iteration,
@@ -141,9 +155,18 @@ class AgenticRetrievalLoop:
                     sufficient=assessment.sufficient,
                     reason=assessment.reason,
                     missing_information=assessment.missing_information,
+                    contradictions=evaluation.contradictions,
+                    years_referenced=evaluation.years_referenced,
+                    spans_multiple_periods=evaluation.spans_multiple_periods,
                 )
             )
 
+            if any(c.resolution is None for c in evaluation.contradictions):
+                # An unresolved disagreement between sources — refining the
+                # query won't fix it, so stop and surface it rather than
+                # burning the remaining iteration budget (spec §18).
+                termination_reason = TerminationReason.CONFLICTING_EVIDENCE
+                break
             if assessment.sufficient:
                 termination_reason = TerminationReason.SUFFICIENT_EVIDENCE
                 break
@@ -165,6 +188,17 @@ class AgenticRetrievalLoop:
             termination_reason=termination_reason,
             evidence=evidence,
         )
+
+    async def _build_evidence_agent(self, collection_id: uuid.UUID | None) -> EvidenceAgent:
+        """Reads the collection's configured source authority order (spec
+        §20), if any, so the evidence agent never hardcodes one hierarchy as
+        universally correct."""
+        if collection_id is None:
+            return EvidenceAgent(self._llm)
+        collection = await self._session.get(Collection, collection_id)
+        raw_order = (collection.source_authority_config or {}).get("order") if collection else None
+        order = [str(item) for item in raw_order] if isinstance(raw_order, list) else None
+        return EvidenceAgent(self._llm, source_authority_order=order)
 
 
 def _refine_query(original_query: str, missing_information: list[str]) -> str:

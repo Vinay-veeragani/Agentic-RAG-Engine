@@ -10,6 +10,7 @@ from agentic_rag.api.dependencies.reranker import RerankerDep
 from agentic_rag.api.schemas.query import (
     AgenticRetrieveRequest,
     AgenticRetrieveResponse,
+    ContradictionResponse,
     IterationTraceResponse,
     QueryAnalyzeRequest,
     QueryAnalyzeResponse,
@@ -82,6 +83,20 @@ async def agentic_retrieve(
                 sufficient=it.sufficient,
                 reason=it.reason,
                 missing_information=it.missing_information,
+                contradictions=[
+                    ContradictionResponse(
+                        claim_a=c.claim_a,
+                        claim_b=c.claim_b,
+                        document_a=c.document_a,
+                        document_b=c.document_b,
+                        chunk_id_a=c.chunk_id_a,
+                        chunk_id_b=c.chunk_id_b,
+                        resolution=c.resolution,
+                    )
+                    for c in it.contradictions
+                ],
+                years_referenced=it.years_referenced,
+                spans_multiple_periods=it.spans_multiple_periods,
             )
             for it in result.iterations
         ],

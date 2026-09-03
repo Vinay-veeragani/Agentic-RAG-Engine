@@ -36,6 +36,7 @@ async def ingest_document(
     filename: str,
     content: bytes,
     title: str | None,
+    source: str | None = None,
     max_upload_size_bytes: int,
 ) -> IngestResult:
     safe_name = validate_upload(filename, content, max_size_bytes=max_upload_size_bytes)
@@ -53,6 +54,7 @@ async def ingest_document(
         document = Document(
             collection_id=collection_id,
             title=title or parsed.title,
+            source=source,
             filename=safe_name,
             document_type=document_type.value,
             checksum=checksum,
@@ -70,6 +72,8 @@ async def ingest_document(
         document.checksum = checksum
         if title:
             document.title = title
+        if source:
+            document.source = source
 
     storage_key = f"{document.id}/v{next_version_number}/{safe_name}"
     storage_path = await object_store.save(storage_key, content)

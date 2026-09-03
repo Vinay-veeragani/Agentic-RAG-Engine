@@ -78,3 +78,4 @@ class TerminationReason(StrEnum):
     MAX_ITERATIONS_REACHED = "max_iterations_reached"
     MAX_RETRIEVAL_CALLS_REACHED = "max_retrieval_calls_reached"
     NO_EVIDENCE_FOUND = "no_evidence_found"
+    CONFLICTING_EVIDENCE = "conflicting_evidence"

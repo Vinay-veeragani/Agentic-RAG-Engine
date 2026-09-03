@@ -22,7 +22,9 @@ def object_store(tmp_path):
     return LocalFileObjectStore(tmp_path)
 
 
-async def _index_text(db_session, object_store, collection_id, filename: str, text: str) -> None:
+async def _index_text(
+    db_session, object_store, collection_id, filename: str, text: str, *, source: str | None = None
+) -> None:
     result = await ingest_document(
         session=db_session,
         object_store=object_store,
@@ -30,6 +32,7 @@ async def _index_text(db_session, object_store, collection_id, filename: str, te
         filename=filename,
         content=text.encode(),
         title=None,
+        source=source,
         max_upload_size_bytes=1_000_000,
     )
     config = ChunkingConfig(strategy=ChunkingStrategy.STRUCTURAL, chunk_size_tokens=200)
@@ -108,6 +111,31 @@ async def test_hybrid_retriever_assigns_fusion_score_and_rank(
     assert all(r.fusion_score is not None for r in results)
     ranks = [r.rank for r in results]
     assert ranks == sorted(ranks)
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retriever_preserves_document_source(db_session, object_store) -> None:
+    """Regression test: HybridRetriever's fusion step used to rebuild each
+    RetrievedCandidate without copying document_source, silently dropping it
+    even though DenseRetriever/SparseRetriever both populated it — found via
+    an end-to-end source-authority test, not a targeted unit test."""
+    collection = Collection(name=f"col-{uuid.uuid4().hex[:8]}")
+    db_session.add(collection)
+    await db_session.flush()
+    await _index_text(
+        db_session,
+        object_store,
+        collection.id,
+        "annual.txt",
+        "Quarterly revenue increased significantly.",
+        source="Annual Report",
+    )
+
+    retriever = HybridRetriever(db_session, MockEmbeddingProvider())
+    results = await retriever.retrieve("revenue", top_k=5)
+
+    assert len(results) >= 1
+    assert results[0].document_source == "Annual Report"
 
 
 @pytest.mark.asyncio
