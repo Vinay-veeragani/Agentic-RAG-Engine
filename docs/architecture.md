@@ -1,11 +1,12 @@
 # Architecture
 
-Status: Phase 8 (Evidence evaluation + contradiction detection) complete,
-on top of Phase 1 (Foundation), Phase 2 (Ingestion), Phase 3 (Chunking +
-embeddings + indexing), Phase 4 (Dense + sparse + hybrid retrieval, RRF),
-Phase 5 (Reranking), Phase 6 (Query analysis + retrieval planning), and
-Phase 7 (Agentic retrieval loop). This document will grow with each phase;
-it only describes what is actually implemented.
+Status: Phase 9 (Answer synthesis + citations + citation validation)
+complete, on top of Phase 1 (Foundation), Phase 2 (Ingestion), Phase 3
+(Chunking + embeddings + indexing), Phase 4 (Dense + sparse + hybrid
+retrieval, RRF), Phase 5 (Reranking), Phase 6 (Query analysis + retrieval
+planning), Phase 7 (Agentic retrieval loop), and Phase 8 (Evidence
+evaluation + contradiction detection). This document will grow with each
+phase; it only describes what is actually implemented.
 
 ## Design decisions
 
@@ -583,6 +584,90 @@ chosen for dependency stability; nothing in the codebase depends on a
   — deliberate (spec §18 says never invent a resolution), but means the
   same two-source conflict always produces identically-worded resolution
   text.
+
+## What's implemented (Phase 9)
+
+- **The key design decision this phase**: the LLM is never asked to
+  produce a real citation ID (chunk/document UUID) — only a small 1-based
+  index (`[1]`, `[2]`, ...) into the evidence list it was shown in the
+  prompt. `citations/resolver.py::resolve_citations()` is the *only* place
+  those indices become real IDs, by looking them up in the same Python
+  evidence list the prompt was built from. An index outside that list's
+  actual range is silently dropped, never guessed at. This makes "never
+  fabricate a citation" (spec §22) an structural guarantee rather than a
+  prompt instruction hoping the model complies — the same pattern already
+  used for chunking/embedding indices in earlier phases, applied here to
+  the highest-stakes case in the whole system.
+- `agents/synthesis_agent.py` — `SynthesisAgent` (spec §21): given a query
+  and evidence, produces discrete claims each carrying its own
+  `evidence_indices`. No evidence at all is a deterministic short-circuit
+  (`insufficient_evidence=True`, no LLM call) — nothing to synthesize from,
+  matching `EvidenceAgent`'s and `MetadataFilter`'s established pattern.
+- `agents/citation_agent.py` — `CitationAgent` (spec §23): checks whether a
+  claim's *cited* evidence actually entails it (not merely relates to the
+  same topic) — a genuine language-understanding judgment, so it goes
+  through the LLM. A claim with zero citations is trivially unsupported
+  without needing a model call.
+- `agents/verifier.py` — `AnswerVerifier` (spec §24, "groundedness"):
+  assembles the final answer from *only* the claims whose citations passed
+  entailment validation — literally dropping unsupported ones and rejoining
+  the rest, rather than asking an LLM to "edit" its own prior answer. If
+  every claim gets dropped, the whole answer becomes
+  `AnswerStatus.INSUFFICIENT_EVIDENCE`, not an empty-but-"grounded" answer.
+- `citations/formatter.py` — deterministic display formatting matching
+  spec §22's example exactly (`"[1] Annual Report, page 42, Revenue
+  Recognition"`, falling back to filename when no source/page/section are
+  set).
+- `citations/validator.py` — `citation_precision` (fraction of proposed
+  citations that were actually entailed) and `citation_completeness`
+  (fraction of claims that ended up with a validated citation), pure
+  arithmetic over already-computed results. `citation_recall` (spec §33)
+  needs a ground-truth relevant-chunk set from an evaluation dataset and
+  isn't computable from one live query — that's Phase 10's job.
+- `POST /query` — spec §29's actual named endpoint, finally implemented for
+  real: runs the full agentic retrieval loop, then — unless it ended in
+  `CONFLICTING_EVIDENCE` or `NO_EVIDENCE_FOUND`, in which case synthesis is
+  skipped entirely rather than attempting to paper over the problem —
+  synthesizes and citation-validates an answer. `/query/analyze` and
+  `/query/retrieve` remain as lower-level preview endpoints (useful for a
+  future Developer Mode UI showing the full pipeline breakdown). Verified
+  against a running server: a real query against real indexed content
+  produced a grounded answer with `citation_completeness`/
+  `citation_precision` both 1.0 and a correctly page/section/source-labeled
+  citation.
+- **A real bug found by manually exercising the pipeline before writing any
+  test**: the mock LLM's generic string-fallback (used for the synthesized
+  claim's `text` field) built the claim from the *query* text with added
+  filler words ("mock value for: ..."). When that same claim text was later
+  fed back into citation validation as the thing being checked against
+  evidence, the filler words diluted the lexical-overlap ratio below the
+  entailment threshold — so even directly-relevant evidence got its claim
+  rejected as unsupported. Fixed by deriving the mock's claim text from the
+  *evidence* it was given instead of the query, which is also more
+  semantically honest: a claim quoting its source evidence should of course
+  be entailed by it.
+- Tests: 167 passing total (added: citation resolution/formatting/metrics
+  as pure functions; synthesis/citation-agent/verifier unit tests including
+  a scripted-fake-LLM test proving unsupported claims actually get removed
+  from the final answer; five `/query` integration scenarios — grounded,
+  no evidence, conflicting evidence, insufficient evidence, empty-query
+  rejection). `ruff` and `mypy --strict` both clean.
+
+### Known gaps from Phase 9
+
+- Citation entailment validation is a single LLM call per claim with no
+  retry-with-different-evidence — if evidence exists but doesn't quite
+  support a claim, the claim is dropped, not repaired or re-retrieved for.
+- No `url` field is ever populated on a citation (spec §22 lists it as
+  optional/conditional) — nothing in the ingestion pipeline captures a
+  source URL yet.
+- `POST /query` always runs the full loop from scratch; there is no
+  conversation memory yet linking a follow-up query to a prior one (spec
+  §26 — not attempted this phase).
+- Citation formatting always numbers citations `[1]`, `[2]`, ... in the
+  order claims were validated, with no deduplication if two different
+  claims cite the same underlying chunk (it will appear twice, with two
+  different numbers).
 
 ## Known limitations
 

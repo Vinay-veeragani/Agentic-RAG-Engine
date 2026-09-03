@@ -4,14 +4,14 @@ An advanced, production-shaped Agentic RAG platform: autonomous knowledge
 retrieval, evidence gathering, verification, and grounded answer generation —
 not a "chat with PDF" demo.
 
-**Status: Phase 8 of 13 complete** (Foundation, ingestion, chunking +
+**Status: Phase 9 of 13 complete** (Foundation, ingestion, chunking +
 embeddings, dense/sparse/hybrid retrieval, reranking, query analysis +
-planning, the agentic retrieval loop, then deeper evidence evaluation +
-contradiction detection). Everything below describes what is actually
-implemented today; features from later phases (answer synthesis, citations,
-evaluation harness, streaming, frontend) are tracked but not yet built. See
-`docs/architecture.md` for design decisions, rationale, and known gaps, and
-the implementation plan below for what's next.
+planning, the agentic retrieval loop, deeper evidence evaluation, then
+answer synthesis + citations + citation validation). Everything below
+describes what is actually implemented today; features from later phases
+(the evaluation harness, streaming, frontend) are tracked but not yet
+built. See `docs/architecture.md` for design decisions, rationale, and
+known gaps, and the implementation plan below for what's next.
 
 ## What's implemented so far
 
@@ -66,6 +66,14 @@ the implementation plan below for what's next.
   awareness. An unresolved contradiction stops the loop immediately with an
   explicit `conflicting_evidence` reason rather than pretending the
   evidence is fine
+- Grounded answer synthesis with first-class citations that can never be
+  fabricated — the LLM only ever references evidence by a small index into
+  the list it was shown; real chunk/document IDs are resolved deterministically
+  in code, never guessed at. Citations are validated for actual entailment
+  (not just topical relatedness), and any claim that fails validation is
+  removed from the final answer rather than silently left in — `POST /query`,
+  the full pipeline (query → plan → retrieve → rerank → evidence → synthesis
+  → citation validation)
 
 ## Local setup
 
@@ -100,7 +108,7 @@ See `docs/architecture.md`.
 6. ✅ Query analysis + retrieval planning
 7. ✅ Agentic retrieval loop (bounded iteration, refinement)
 8. ✅ Evidence evaluation + contradiction detection
-9. Answer synthesis + citations + citation validation
+9. ✅ Answer synthesis + citations + citation validation
 10. Evaluation framework (baseline vs. agentic RAG benchmark)
 11. Observability (OpenTelemetry/metrics) + SSE streaming
 12. Frontend
@@ -139,7 +147,11 @@ See `docs/architecture.md`.
 - Nothing from the agentic loop is persisted to the database yet (no
   `GET /queries/{id}/trace`) — its full trace is only returned in the API
   response
-- Everything past Phase 8 (answer generation, citations, evaluation) does
-  not exist yet — there is no answer-generation endpoint to call today,
-  only ingestion, indexing, search/retrieve/rerank, query analysis, the
-  agentic retrieval loop with evidence evaluation, and `/health`
+- No conversation memory — each `/query` call runs independently; a
+  follow-up like "what about 2024?" is not resolved against a prior query
+- No `url` field on citations yet — nothing in ingestion captures a source
+  URL
+- Citation numbering doesn't deduplicate — the same chunk cited by two
+  different claims gets two different citation numbers
+- Everything past Phase 9 (the evaluation harness, streaming, frontend)
+  does not exist yet

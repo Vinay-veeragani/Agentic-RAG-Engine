@@ -120,16 +120,32 @@ def _missing_information(ctx: _Context) -> list[str]:
     return [] if _is_evidence_sufficient(ctx) else [f"more detail about: {ctx.query[:60]}"]
 
 
-_QUERY_LINE = re.compile(r"^Query:\s*(.*)$", re.MULTILINE)
+def _derive_claim_text(ctx: _Context) -> str:
+    """A synthesized claim should restate evidence, not the query — using
+    the generic `str` fallback (built from the query) here would pollute the
+    claim with query-only filler words, diluting the term-overlap ratio when
+    that same text is later re-evaluated as a "Claim:" during citation
+    validation. Excerpting the evidence itself keeps the mock self-consistent
+    end to end: a claim quoting its source evidence is trivially entailed by it."""
+    if ctx.evidence.strip():
+        first_line = ctx.evidence.strip().split("\n")[0]
+        snippet = re.sub(r"^\[\d+\]\s*", "", first_line).strip()
+        if snippet:
+            return snippet[:200]
+    return f"mock claim for: {ctx.query[:60]}"
+
+
+_QUERY_LINE = re.compile(r"^(?:Query|Claim):\s*(.*)$", re.MULTILINE)
 _EVIDENCE_BLOCK = re.compile(r"^Evidence:\s*\n(.*)", re.MULTILINE | re.DOTALL)
 
 
 def _build_context(user_prompt: str) -> _Context:
-    """Every prompt in this codebase starts a line with "Query: <text>", and
-    evidence-bearing prompts (evidence assessment) follow with an
-    "Evidence:\\n..." block. Rules must operate on just these extracted
-    pieces — not the raw prompt blob, which may also contain e.g. a
-    classification JSON dump — or unrelated prompt content could
+    """Every prompt in this codebase starts a line with "Query: <text>" (or,
+    for citation validation, "Claim: <text>" — the same role: the primary
+    text to judge evidence against), and evidence-bearing prompts follow
+    with an "Evidence:\\n..." block. Rules must operate on just these
+    extracted pieces — not the raw prompt blob, which may also contain e.g.
+    a classification JSON dump — or unrelated prompt content could
     accidentally trip a keyword/pattern rule."""
     query_match = _QUERY_LINE.search(user_prompt)
     evidence_match = _EVIDENCE_BLOCK.search(user_prompt)
@@ -159,6 +175,10 @@ _FIELD_NAME_RULES: dict[str, Any] = {
     "relevance": _term_overlap_ratio,
     "coverage": _term_overlap_ratio,
     "directness": _term_overlap_ratio,
+    "insufficient_evidence": lambda ctx: not _is_evidence_sufficient(ctx),
+    "evidence_indices": lambda ctx: [1] if ctx.evidence.strip() else [],
+    "entailed": _is_evidence_sufficient,
+    "text": _derive_claim_text,
 }
 
 # Nested model types that should get their own (mostly-empty) default rather
@@ -215,7 +235,11 @@ def _fill_by_type(annotation: Any, ctx: _Context) -> Any:
         (item_type,) = get_args(annotation) or (str,)
         if isinstance(item_type, type) and issubclass(item_type, BaseModel):
             return [_fill_model(item_type, ctx)]
-        return _derive_subqueries(ctx.query) if item_type is str else []
+        if item_type is str:
+            return _derive_subqueries(ctx.query)
+        if item_type is int:
+            return [1] if ctx.evidence.strip() or ctx.query.strip() else []
+        return []
 
     if isinstance(annotation, type) and issubclass(annotation, Enum):
         members = list(annotation)

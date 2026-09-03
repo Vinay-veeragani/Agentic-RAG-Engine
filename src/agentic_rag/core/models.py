@@ -79,3 +79,17 @@ class TerminationReason(StrEnum):
     MAX_RETRIEVAL_CALLS_REACHED = "max_retrieval_calls_reached"
     NO_EVIDENCE_FOUND = "no_evidence_found"
     CONFLICTING_EVIDENCE = "conflicting_evidence"
+
+
+class AnswerStatus(StrEnum):
+    """Outcome of answer synthesis + citation validation (spec §21/§24).
+    Distinct from `TerminationReason` (a property of the retrieval loop) —
+    an answer can only reach `GROUNDED` after the loop already found
+    evidence; `INSUFFICIENT_EVIDENCE` here specifically means synthesis
+    could not produce any citation-validated claim from evidence that
+    existed, not that retrieval found nothing at all."""
+
+    GROUNDED = "grounded"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    CONFLICTING_EVIDENCE = "conflicting_evidence"
+    NO_EVIDENCE_FOUND = "no_evidence_found"

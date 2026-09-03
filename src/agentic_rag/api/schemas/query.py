@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from agentic_rag.agents.planner import RetrievalPlan
 from agentic_rag.agents.query_analyzer import QueryAnalysis
 from agentic_rag.api.schemas.retrieval import RetrievedCandidateResponse
-from agentic_rag.core.models import TerminationReason
+from agentic_rag.core.models import AnswerStatus, TerminationReason
 
 
 class QueryAnalyzeRequest(BaseModel):
@@ -68,3 +68,39 @@ class AgenticRetrieveResponse(BaseModel):
     iterations: list[IterationTraceResponse]
     termination_reason: TerminationReason
     evidence: list[RetrievedCandidateResponse]
+
+
+class QueryRequest(BaseModel):
+    query: str = Field(min_length=1)
+    collection_id: uuid.UUID | None = None
+
+
+class CitationResponse(BaseModel):
+    label: str
+    claim: str
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    document_filename: str
+    page: int | None
+    section: str | None
+    source: str | None
+    evidence_score: float | None
+
+
+class QueryResponse(BaseModel):
+    """The full pipeline (spec §29 POST /query): query -> plan -> retrieve ->
+    rerank -> evidence evaluation -> (refine/retry) -> synthesis -> citation
+    validation -> grounded answer. `status` is `grounded` only when at least
+    one claim survived citation validation; otherwise `answer`/`citations`
+    are empty and `status` explains why (insufficient/conflicting evidence,
+    or none found) rather than ever guessing at an answer."""
+
+    query: str
+    trace_id: str
+    status: AnswerStatus
+    answer: str | None
+    citations: list[CitationResponse]
+    citation_completeness: float | None
+    citation_precision: float | None
+    termination_reason: TerminationReason
+    iterations: list[IterationTraceResponse]
