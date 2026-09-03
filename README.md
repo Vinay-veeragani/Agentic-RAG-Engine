@@ -4,13 +4,14 @@ An advanced, production-shaped Agentic RAG platform: autonomous knowledge
 retrieval, evidence gathering, verification, and grounded answer generation —
 not a "chat with PDF" demo.
 
-**Status: Phase 5 of 13 complete** (Foundation, ingestion, chunking +
-embeddings, dense/sparse/hybrid retrieval, then reranking). Everything below
-describes what is actually implemented today; features from later phases
-(the agentic loop, evidence evaluation, citations, evaluation harness,
-streaming, frontend) are tracked but not yet built. See
-`docs/architecture.md` for design decisions, rationale, and known gaps, and
-the implementation plan below for what's next.
+**Status: Phase 6 of 13 complete** (Foundation, ingestion, chunking +
+embeddings, dense/sparse/hybrid retrieval, reranking, then query analysis +
+retrieval planning). Everything below describes what is actually
+implemented today; features from later phases (the agentic loop, evidence
+evaluation, citations, evaluation harness, streaming, frontend) are tracked
+but not yet built. See `docs/architecture.md` for design decisions,
+rationale, and known gaps, and the implementation plan below for what's
+next.
 
 ## What's implemented so far
 
@@ -47,6 +48,12 @@ the implementation plan below for what's next.
   `cross-encoder/ms-marco-MiniLM-L-6-v2`) narrowing a wide candidate pool
   down to a precise top-k while preserving every retrieval score alongside
   the rerank score — `POST /retrieve` with `rerank: true`
+- Query understanding (classifies into simple-factual/comparison/temporal/
+  analytical/multi-hop/summarization/ambiguous), retrieval planning (bounded
+  strategy/expansion/decomposition/iteration decisions — always clamped to
+  configured budget ceilings, never trusting the LLM alone), query
+  expansion, and query decomposition, all via a shared LLM provider
+  abstraction (mock, local via Ollama, or OpenAI) — `POST /query/analyze`
 
 ## Local setup
 
@@ -78,7 +85,7 @@ See `docs/architecture.md`.
 3. ✅ Chunking + embeddings + indexing
 4. ✅ Dense + sparse + hybrid retrieval, Reciprocal Rank Fusion
 5. ✅ Reranking
-6. Query analysis + retrieval planning
+6. ✅ Query analysis + retrieval planning
 7. Agentic retrieval loop (bounded iteration, refinement)
 8. Evidence evaluation + contradiction detection
 9. Answer synthesis + citations + citation validation
@@ -103,7 +110,12 @@ See `docs/architecture.md`.
 - No retrieval-result caching yet; every search hits Postgres directly
 - No remote reranker (e.g. Cohere) — only a deterministic mock and a real
   local cross-encoder
-- Everything past Phase 5 (the agentic loop, evidence evaluation,
+- No Anthropic or Gemini LLM provider yet — mock, Ollama (local), and
+  OpenAI only; Ollama and OpenAI are implemented but unexercised in this
+  environment (no Ollama install, no API key)
+- Query analysis/planning is not wired into retrieval yet — `/query/analyze`
+  is a standalone preview; executing a plan against retrieval is Phase 7
+- Everything past Phase 6 (the agentic loop, evidence evaluation,
   generation, citations, evaluation) does not exist yet — there is no
   answer-generation endpoint to call today, only ingestion, indexing,
-  search/retrieve/rerank, and `/health`
+  search/retrieve/rerank, query analysis, and `/health`

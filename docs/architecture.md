@@ -1,9 +1,10 @@
 # Architecture
 
-Status: Phase 5 (Reranking) complete, on top of Phase 1 (Foundation),
-Phase 2 (Ingestion), Phase 3 (Chunking + embeddings + indexing), and
-Phase 4 (Dense + sparse + hybrid retrieval, RRF). This document will grow
-with each phase; it only describes what is actually implemented.
+Status: Phase 6 (Query analysis + retrieval planning) complete, on top of
+Phase 1 (Foundation), Phase 2 (Ingestion), Phase 3 (Chunking + embeddings +
+indexing), Phase 4 (Dense + sparse + hybrid retrieval, RRF), and Phase 5
+(Reranking). This document will grow with each phase; it only describes
+what is actually implemented.
 
 ## Design decisions
 
@@ -323,6 +324,86 @@ chosen for dependency stability; nothing in the codebase depends on a
   Phase 3), but adding one wasn't done speculatively without a concrete need.
 - `MockReranker`'s term-overlap scoring is intentionally not semantically
   meaningful — same caveat as `MockEmbeddingProvider`.
+
+## What's implemented (Phase 6)
+
+- `generation/llm.py` — `LLMProvider` protocol: `complete()` (raw text,
+  mirroring every real chat API) plus `complete_structured()`, provided by
+  default via `BaseLLMProvider` in terms of `complete()` — schema-instructed
+  prompting (the pydantic JSON Schema is embedded in the system prompt),
+  JSON extraction (handles a bare object, a markdown code fence, or prose
+  wrapping one), pydantic validation, and **one retry** with the validation
+  error fed back to the model before raising `ModelProviderError`. This is
+  the first LLM-reasoning component in the codebase — introduced here
+  because query classification/expansion/decomposition are exactly the kind
+  of language-understanding task deterministic rules handle poorly in
+  general (engineering principle #2), unlike RRF or chunk windowing.
+- Three providers: `MockLLMProvider` (see below), `OllamaLLMProvider`
+  (local, `/api/chat` with `format: "json"`, no API key — implemented but
+  **not exercised by any test**: Ollama isn't installed/running on this
+  machine), `OpenAILLMProvider` (plain `httpx` call, same "implemented but
+  unexercised without a key" status as `OpenAIEmbeddingProvider`). Anthropic
+  and Gemini are not implemented — the same `LLMProvider` protocol would
+  support them, but adding unexercised provider code with no way to verify
+  it wasn't done speculatively.
+- `generation/mock.py` — `MockLLMProvider.complete_structured` does not go
+  through `BaseLLMProvider`'s wrapper; it directly introspects the
+  *requested pydantic schema type* (via `model_fields`) and fills each field
+  deterministically — keyword/pattern heuristics for fields whose name
+  signals intent (`query_type`, `decompose`, `subqueries`, `reasoning`, ...),
+  generic rules by Python type otherwise (bool/int/float/str/Enum/
+  `list[str]`/`list[BaseModel]`/nested `BaseModel`). This is real
+  architectural investment, not a shortcut: every future agent built on
+  `complete_structured` (evidence evaluation, citation validation, answer
+  synthesis in later phases) gets a working offline mock for free, the same
+  role `MockEmbeddingProvider`/`MockReranker` play for their layers. Query
+  heuristics operate on text extracted from a `"Query: <text>"` line in the
+  prompt specifically — not the raw prompt blob — so that e.g. the
+  planner's prompt (which appends a JSON classification blob after the
+  query) doesn't feed unrelated JSON text into the same keyword rules; this
+  was a real bug caught while manually exercising the mock end-to-end,
+  fixed before it reached tests.
+- `agents/query_analyzer.py` — `QueryAnalyzer` (spec §10: classifies into
+  `QueryType`, returns structured `is_ambiguous`/`is_answerable`/`reasoning`,
+  never free-form planning text) and `QueryExpander` (spec §11: proposes up
+  to 5 phrasing variants; only invoked when the plan says to — "do not
+  blindly expand every query").
+- `agents/planner.py` — `RetrievalPlanner` (spec §13: decides strategy,
+  `expand_query`, `decompose`, `max_iterations`, `top_k`, reusing
+  `retrieval.base.MetadataFilter` directly rather than a parallel schema)
+  and `QueryDecomposer` (spec §12: splits a complex query into up to 8
+  standalone subqueries). **The planner's `max_iterations`/`top_k` are
+  always clamped to configured ceilings after the LLM (or mock) call** —
+  spec §13 "the planner must be bounded and validated," enforced in code,
+  not just prompted for; covered by a unit test that sets a ceiling of 1 and
+  asserts the mock's default of 3 gets clamped down regardless.
+- `POST /query/analyze` — a preview endpoint (not one of spec §29's listed
+  routes) exposing analysis + plan + conditional expansion/decomposition
+  ahead of the full agentic loop that will actually execute a plan like this
+  in Phase 7. Verified via an actual HTTP request to a running server.
+- Tests: 119 passing total (added: `BaseLLMProvider` retry-then-raise
+  behavior against a scripted fake provider; `MockLLMProvider` schema-fill
+  correctness across query-type heuristics, nested/list fields, and
+  determinism; the four agent classes; the API route; an empty-query
+  rejection). `ruff` and `mypy --strict` both clean.
+
+### Known gaps from Phase 6
+
+- No Anthropic or Gemini `LLMProvider` implementation yet (see above).
+- `MockLLMProvider`'s heuristics are tuned to this codebase's actual prompt
+  schemas (`QueryAnalysis`, `RetrievalPlan`, `QueryExpansion`,
+  `QueryDecomposition`) and field-naming conventions — it is not a generic
+  pydantic-schema-to-plausible-data filler for arbitrary external schemas,
+  though the type-based fallback rules (Enum/bool/int/float/str/list/nested
+  model) do generalize.
+- `QueryDecomposer`'s mock-path splitting (`" and "`/comma) is a naive
+  heuristic, not real dependency-aware decomposition — multi-hop subquery
+  *dependencies* (spec §17: "which companies... **and** what were the
+  acquisition values") are explicitly Phase 7's concern, not implemented
+  here.
+- Nothing from this phase is wired into the retrieval endpoints yet —
+  `/query/analyze` is a standalone preview; the agentic loop that actually
+  executes a plan against `/retrieve` is Phase 7.
 
 ## Known limitations
 
