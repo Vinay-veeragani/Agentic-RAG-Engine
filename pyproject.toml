@@ -76,7 +76,11 @@ explicit_package_bases = true
 # PyMuPDF and sentence-transformers ship without type stubs/py.typed; every
 # call into them looks "untyped" to strict mypy regardless of how this
 # module's own code is typed.
-module = ["agentic_rag.ingestion.parsers.pdf", "agentic_rag.embeddings.local"]
+module = [
+    "agentic_rag.ingestion.parsers.pdf",
+    "agentic_rag.embeddings.local",
+    "agentic_rag.retrieval.reranking",
+]
 disallow_untyped_calls = false
 warn_return_any = false
 

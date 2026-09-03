@@ -1,9 +1,9 @@
 # Architecture
 
-Status: Phase 4 (Dense + sparse + hybrid retrieval, RRF) complete, on top of
-Phase 1 (Foundation), Phase 2 (Ingestion), and Phase 3 (Chunking +
-embeddings + indexing). This document will grow with each phase; it only
-describes what is actually implemented.
+Status: Phase 5 (Reranking) complete, on top of Phase 1 (Foundation),
+Phase 2 (Ingestion), Phase 3 (Chunking + embeddings + indexing), and
+Phase 4 (Dense + sparse + hybrid retrieval, RRF). This document will grow
+with each phase; it only describes what is actually implemented.
 
 ## Design decisions
 
@@ -288,6 +288,41 @@ chosen for dependency stability; nothing in the codebase depends on a
   retrievers are called directly, not yet through the query/plan/trace
   machinery that Phase 6/7 (query planning, the agentic retrieval loop)
   will add.
+
+## What's implemented (Phase 5)
+
+- `retrieval/reranking.py` — `Reranker` protocol: `rerank(query, candidates,
+  top_k)` sets `rerank_score` on each candidate and returns the top-k by
+  that score, leaving `dense_score`/`sparse_score`/`fusion_score` untouched
+  — never collapsing scores into one number (spec §14 provenance).
+  `MockReranker` (deterministic query/content term-overlap, no model or
+  network — same role as `MockEmbeddingProvider`) and
+  `LocalCrossEncoderReranker` (sentence-transformers `CrossEncoder`,
+  `cross-encoder/ms-marco-MiniLM-L-6-v2`, CPU, no API key) sit behind it.
+  Verified with a real (non-mocked) model download and inference call: for
+  the query "What happened to revenue?" the cross-encoder scored a revenue
+  passage at ~-0.001 and an unrelated weather passage at ~-11.2 — a large,
+  correctly-ordered separation from a genuine semantic signal, not just
+  plumbing that runs without error.
+- `POST /retrieve` gained `rerank`/`rerank_top_k` fields. When
+  `rerank=true`, retrieval first fetches `candidate_pool_size` candidates
+  (the "top 20-30" from spec §14) and the reranker narrows that down to
+  `rerank_top_k` (the "top 5-10 evidence chunks"); `rank` is reassigned to
+  reflect the post-rerank order, since the pre-rerank rank is stale once
+  results are reordered.
+- Tests: 93 passing total (added: unit tests for both rerankers including
+  empty-query/empty-candidates edges; integration tests for `/retrieve` with
+  `rerank=true/false` against real Postgres). `ruff` and `mypy --strict`
+  both clean.
+
+### Known gaps from Phase 5
+
+- No remote reranker (e.g. Cohere Rerank) — only mock and local. The
+  `Reranker` protocol is the same shape a remote provider would implement
+  (mirroring how `OpenAIEmbeddingProvider` slots into `EmbeddingProvider` in
+  Phase 3), but adding one wasn't done speculatively without a concrete need.
+- `MockReranker`'s term-overlap scoring is intentionally not semantically
+  meaningful — same caveat as `MockEmbeddingProvider`.
 
 ## Known limitations
 

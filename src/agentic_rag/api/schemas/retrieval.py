@@ -36,6 +36,10 @@ class RetrieveRequest(BaseModel):
     candidate_pool_size: int = Field(default=30, ge=1, le=200)
     score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     filters: MetadataFilter = Field(default_factory=MetadataFilter)
+    rerank: bool = False
+    rerank_top_k: int = Field(
+        default=8, ge=1, le=50, description="Final result count when rerank=true."
+    )
 
 
 class RetrievedCandidateResponse(BaseModel):
@@ -50,6 +54,7 @@ class RetrievedCandidateResponse(BaseModel):
     dense_score: float | None
     sparse_score: float | None
     fusion_score: float | None
+    rerank_score: float | None
     rank: int | None
 
 

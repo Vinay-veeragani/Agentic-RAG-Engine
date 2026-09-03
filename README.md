@@ -4,10 +4,10 @@ An advanced, production-shaped Agentic RAG platform: autonomous knowledge
 retrieval, evidence gathering, verification, and grounded answer generation —
 not a "chat with PDF" demo.
 
-**Status: Phase 4 of 13 complete** (Foundation, ingestion, chunking +
-embeddings, then dense/sparse/hybrid retrieval). Everything below describes
-what is actually implemented today; features from later phases (reranking,
-the agentic loop, evidence evaluation, citations, evaluation harness,
+**Status: Phase 5 of 13 complete** (Foundation, ingestion, chunking +
+embeddings, dense/sparse/hybrid retrieval, then reranking). Everything below
+describes what is actually implemented today; features from later phases
+(the agentic loop, evidence evaluation, citations, evaluation harness,
 streaming, frontend) are tracked but not yet built. See
 `docs/architecture.md` for design decisions, rationale, and known gaps, and
 the implementation plan below for what's next.
@@ -43,6 +43,10 @@ the implementation plan below for what's next.
   type, document IDs, section, heading, source, year) — `POST /search` for
   a simple ranked result list, `POST /retrieve` for the developer view with
   per-method scores and explicit strategy selection
+- Reranking (mock term-overlap and a real local cross-encoder,
+  `cross-encoder/ms-marco-MiniLM-L-6-v2`) narrowing a wide candidate pool
+  down to a precise top-k while preserving every retrieval score alongside
+  the rerank score — `POST /retrieve` with `rerank: true`
 
 ## Local setup
 
@@ -73,7 +77,7 @@ See `docs/architecture.md`.
 2. ✅ Document ingestion (PDF/DOCX/TXT/Markdown/HTML/CSV/JSON parsers)
 3. ✅ Chunking + embeddings + indexing
 4. ✅ Dense + sparse + hybrid retrieval, Reciprocal Rank Fusion
-5. Reranking
+5. ✅ Reranking
 6. Query analysis + retrieval planning
 7. Agentic retrieval loop (bounded iteration, refinement)
 8. Evidence evaluation + contradiction detection
@@ -97,7 +101,9 @@ See `docs/architecture.md`.
 - Sparse retrieval is Postgres full-text search (`ts_rank_cd`), not true
   BM25 — no term-frequency saturation or length normalization
 - No retrieval-result caching yet; every search hits Postgres directly
-- Everything past Phase 4 (reranking, the agentic loop, evidence
-  evaluation, generation, citations, evaluation) does not exist yet — there
-  is no answer-generation endpoint to call today, only ingestion, indexing,
-  search/retrieve, and `/health`
+- No remote reranker (e.g. Cohere) — only a deterministic mock and a real
+  local cross-encoder
+- Everything past Phase 5 (the agentic loop, evidence evaluation,
+  generation, citations, evaluation) does not exist yet — there is no
+  answer-generation endpoint to call today, only ingestion, indexing,
+  search/retrieve/rerank, and `/health`
