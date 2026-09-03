@@ -73,6 +73,38 @@ async def test_evidence_agent_detects_numeric_contradiction_across_documents() -
 
 
 @pytest.mark.asyncio
+async def test_evidence_agent_does_not_flag_different_periods_as_contradiction() -> None:
+    """Regression test: two documents reporting different margins for
+    different fiscal years were being flagged as a contradiction — found by
+    running the Phase 10 benchmark corpus, where a 2023 margin and a 2024
+    margin legitimately differ (spec §19: mixing periods without awareness
+    is the bug, not the differing numbers themselves)."""
+    agent = EvidenceAgent(MockLLMProvider())
+    candidates = [
+        _candidate("In fiscal year 2023, operating margin was 22 percent."),
+        _candidate("In fiscal year 2024, operating margin was 25 percent."),
+    ]
+    result = await agent.evaluate("what was the operating margin", candidates)
+    assert result.contradictions == []
+
+
+@pytest.mark.asyncio
+async def test_evidence_agent_detects_contradiction_with_spelled_out_percent() -> None:
+    """Regression test: the metric pattern originally only matched a literal
+    '%' symbol, missing real-world text (and this repo's own benchmark
+    corpus, spec §33/34) that spells out "percent" — found by actually
+    running the Phase 10 benchmark against real corpus text, not a unit
+    test written in isolation."""
+    agent = EvidenceAgent(MockLLMProvider())
+    candidates = [
+        _candidate("Quarterly revenue declined 4 percent in Q3."),
+        _candidate("Quarterly revenue declined 9 percent in Q3."),
+    ]
+    result = await agent.evaluate("what happened to revenue", candidates)
+    assert len(result.contradictions) == 1
+
+
+@pytest.mark.asyncio
 async def test_evidence_agent_does_not_flag_same_document_as_contradiction() -> None:
     agent = EvidenceAgent(MockLLMProvider())
     shared_id = uuid.uuid4()

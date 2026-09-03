@@ -1,12 +1,13 @@
 # Architecture
 
-Status: Phase 9 (Answer synthesis + citations + citation validation)
-complete, on top of Phase 1 (Foundation), Phase 2 (Ingestion), Phase 3
-(Chunking + embeddings + indexing), Phase 4 (Dense + sparse + hybrid
-retrieval, RRF), Phase 5 (Reranking), Phase 6 (Query analysis + retrieval
-planning), Phase 7 (Agentic retrieval loop), and Phase 8 (Evidence
-evaluation + contradiction detection). This document will grow with each
-phase; it only describes what is actually implemented.
+Status: Phase 10 (Evaluation framework) complete, on top of Phase 1
+(Foundation), Phase 2 (Ingestion), Phase 3 (Chunking + embeddings +
+indexing), Phase 4 (Dense + sparse + hybrid retrieval, RRF), Phase 5
+(Reranking), Phase 6 (Query analysis + retrieval planning), Phase 7
+(Agentic retrieval loop), Phase 8 (Evidence evaluation + contradiction
+detection), and Phase 9 (Answer synthesis + citations + citation
+validation). This document will grow with each phase; it only describes
+what is actually implemented.
 
 ## Design decisions
 
@@ -668,6 +669,135 @@ chosen for dependency stability; nothing in the codebase depends on a
   order claims were validated, with no deduplication if two different
   claims cite the same underlying chunk (it will appear twice, with two
   different numbers).
+
+## What's implemented (Phase 10)
+
+- `evaluation/datasets.py` — a small, self-contained benchmark corpus (15
+  synthetic documents: 7 finance-related plus 8 topic-distinct distractors)
+  and 9 cases covering every category spec §33 lists (simple factual x2,
+  multi-hop via comparison, comparison, temporal, analytical, aggregation,
+  ambiguous, unanswerable, contradictory evidence). `build_benchmark_corpus()`
+  ingests+indexes this corpus fresh through the *real* pipeline and resolves
+  each case's ground-truth relevant documents from the real `Document.id`
+  values that ingestion just created — nothing here is a hardcoded chunk ID.
+- `evaluation/retrieval.py` — Recall@K/Precision@K/MRR/NDCG/Hit Rate as pure
+  functions, unit-tested against hand-computed expected values.
+- `evaluation/baseline.py` — the literal spec §34 baseline: Query -> Dense
+  Retrieval -> Top-K -> LLM. No planning, no reranking, no evidence
+  judgment, no citations, no bounded refinement.
+- `evaluation/generation.py` — `GenerationJudge.judge_answer_relevance()`,
+  the one genuinely new LLM-judge call this phase adds. `faithfulness` and
+  `context_relevance` are *not* separately re-judged — they're exactly what
+  citation_precision (Phase 9) and `EvidenceAssessment.relevance` (Phase 8)
+  already measure, and recomputing them with a second judge would be
+  redundant, not more rigorous.
+- `evaluation/citations.py` — aggregates per-case `CitationQualityMetrics`
+  into corpus-wide means. `citation_recall` (spec §33) needs a ground-truth
+  "which chunks must be cited" label this benchmark's fixtures don't carry
+  (only document-level relevance, for retrieval metrics) — not computed,
+  a documented gap rather than a silent approximation.
+- `evaluation/runner.py::run_benchmark()` — runs both pipelines over every
+  case and assembles a `BenchmarkReport`. Retrieval-metric *means* exclude
+  the ambiguous/unanswerable cases (they test correct abstention, not
+  ranking quality) — each case's own numbers are still visible individually.
+- `benchmarks/run_evaluation.py` — an actually-runnable CLI script
+  (`python benchmarks/run_evaluation.py --embedding local --llm mock`)
+  producing a printed comparison table and a JSON report
+  (`benchmarks/results/latest.json`, committed as evidence of a real run —
+  see numbers below). Defaults to the *local* sentence-transformers
+  embedding provider rather than the mock one specifically so retrieval
+  metrics measure real retrieval quality, not noise.
+
+### Three real bugs found by actually running the benchmark, not by writing tests in isolation
+
+Every one of these was invisible until real corpus text hit the Phase 8
+contradiction detector — exactly the value a real (if small) benchmark run
+provides over unit tests written against hand-picked examples:
+
+1. **The metric-pattern regex only matched a literal `%` symbol.** This
+   repo's own benchmark corpus (and most real prose) spells out "percent."
+   The known contradictory-evidence case silently failed to be detected.
+   Fixed by accepting `%`, `percent`, and `per cent`.
+2. **Different time periods were flagged as contradictions.** A 2023 margin
+   of 22% and a 2024 margin of 25% in two different documents were flagged
+   as conflicting — they're just different years (spec §19's exact
+   concern). Fixed by extracting each candidate's referenced years and
+   skipping the flag when both candidates reference years and those years
+   don't overlap. A follow-on discovery: a document that mentions its own
+   year *and* a comparison year ("a 25 percent increase over 2023") pollutes
+   its year-set — worked around by rewording the corpus to keep each
+   year-specific document self-contained, since disambiguating "which year
+   this specific number is about" within one chunk is a harder problem than
+   this phase set out to solve.
+3. **Contradiction detection considered the entire evidence list, unscoped
+   by relevance.** With a small corpus and a padded-out top-8 evidence
+   pool, an unrelated conflict ranked 7th of 8 was flagging *every* query
+   that happened to retrieve it — including queries with nothing to do
+   with that conflict. Fixed by scoping the check to the top 4 candidates
+   by rerank rank, on the reasoning that a low-relevance chunk that only
+   made it into the pool to fill out top_k shouldn't be able to veto an
+   otherwise-clean answer. This is a real architectural finding, not a
+   corpus-tuning trick: a production corpus large enough that top_k is a
+   small fraction of it would show this less often, but the *unscoped*
+   check was still wrong in principle regardless of corpus size.
+
+### Real benchmark results (captured `2026-09-03`, `--embedding local --llm mock`)
+
+| Metric | Baseline | Agentic |
+|---|---|---|
+| Recall@5 (excl. ambiguous/unanswerable) | 1.000 | 1.000 |
+| Precision@5 | 0.286 | 0.286 |
+| MRR | 0.929 | 0.857 |
+| NDCG@5 | 0.947 | 0.903 |
+| Hit Rate@5 | 1.000 | 1.000 |
+| Mean latency | 0.041s | 0.090s |
+| Citation precision | n/a (no citations) | 1.000 |
+| Citation completeness | n/a | 1.000 |
+
+Retrieval metrics are nearly identical between the two pipelines on this
+small, low-ambiguity corpus — expected, since both ultimately search the
+same indexed content, and the corpus isn't hard enough for reranking/
+expansion/decomposition to visibly move the needle. **The qualitative
+difference is where the two pipelines diverge in behavior, not their
+retrieval scores**: for the "unanswerable" case (a query with no relevant
+document at all), the agentic pipeline correctly returns
+`insufficient_evidence` rather than a guess; for the "contradictory_evidence"
+case (two sources reporting different numbers with no way to prefer one),
+it correctly returns `conflicting_evidence` and surfaces the specific
+conflicting claims rather than confidently reporting one arbitrary number.
+The baseline pipeline has no such option — it always produces *an* answer,
+with no signal to the caller about whether the underlying evidence
+actually supported it. `mean_answer_relevance` and generation-quality
+numbers from this specific run are not meaningful measures of real
+generation quality: the mock LLM's answers are lexical excerpts of
+evidence, not created language, since no real LLM provider (Ollama, OpenAI)
+is available in this environment — see below.
+
+### Known gaps from Phase 10
+
+- **Generation-quality metrics from this environment's benchmark run are
+  plumbing-only, not a real quality signal.** `MockLLMProvider` doesn't
+  generate language — it excerpts evidence text deterministically. A
+  meaningful faithfulness/answer-relevance/generation-quality comparison
+  needs a real LLM provider (`--llm ollama` once Ollama is installed, or
+  `--llm openai` with a key); the retrieval-metric comparison is real and
+  provider-independent (driven by real local embeddings + real retrieval
+  code), but the generation side of this specific captured run is not
+  evidence of real answer quality.
+- `citation_recall` is not computed (see above).
+- `estimated_tokens` only counts the final answer text via this repo's own
+  offline tokenizer — not the prompt/context tokens actually sent to an
+  LLM, and not a real provider-reported usage figure. It is a rough,
+  consistent proxy, not a cost estimate.
+- The 15-document corpus is deliberately small for a fast, self-contained,
+  repo-committed benchmark. It is large enough to demonstrate the
+  qualitative baseline-vs-agentic differences above, but a corpus this
+  small cannot meaningfully stress hybrid fusion, reranking, or
+  decomposition the way a realistic multi-thousand-chunk corpus would.
+- Nothing here persists to the `evaluation_datasets`/`evaluation_cases`/
+  `evaluation_results` tables (present in the schema since Phase 1) — the
+  benchmark corpus is rebuilt fresh on every run and results are only
+  written to a JSON file, not the database.
 
 ## Known limitations
 

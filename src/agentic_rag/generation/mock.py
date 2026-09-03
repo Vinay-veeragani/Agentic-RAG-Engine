@@ -200,7 +200,16 @@ class MockLLMProvider:
         temperature: float = 0.0,
         max_tokens: int = 1024,
     ) -> str:
-        return f"[mock completion for prompt of length {len(user_prompt)}]"
+        """Evidence-grounded, not a placeholder: a raw (non-structured)
+        completion call is exactly what the evaluation framework's baseline
+        pipeline uses (spec §34 "Dense Retrieval -> Top-K -> LLM"), and a
+        fixed placeholder string there would make every baseline-vs-agentic
+        comparison against the mock provider meaningless. Reuses the same
+        evidence-excerpting heuristic as structured claim generation."""
+        ctx = _build_context(user_prompt)
+        if ctx.evidence.strip():
+            return _derive_claim_text(ctx)
+        return f"[mock completion for: {ctx.query[:60]}]"
 
     async def complete_structured(
         self,

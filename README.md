@@ -4,14 +4,14 @@ An advanced, production-shaped Agentic RAG platform: autonomous knowledge
 retrieval, evidence gathering, verification, and grounded answer generation —
 not a "chat with PDF" demo.
 
-**Status: Phase 9 of 13 complete** (Foundation, ingestion, chunking +
+**Status: Phase 10 of 13 complete** (Foundation, ingestion, chunking +
 embeddings, dense/sparse/hybrid retrieval, reranking, query analysis +
-planning, the agentic retrieval loop, deeper evidence evaluation, then
-answer synthesis + citations + citation validation). Everything below
+planning, the agentic retrieval loop, deeper evidence evaluation, answer
+synthesis + citations, then the evaluation framework). Everything below
 describes what is actually implemented today; features from later phases
-(the evaluation harness, streaming, frontend) are tracked but not yet
-built. See `docs/architecture.md` for design decisions, rationale, and
-known gaps, and the implementation plan below for what's next.
+(streaming, frontend) are tracked but not yet built. See
+`docs/architecture.md` for design decisions, rationale, and known gaps, and
+the implementation plan below for what's next.
 
 ## What's implemented so far
 
@@ -74,6 +74,13 @@ known gaps, and the implementation plan below for what's next.
   removed from the final answer rather than silently left in — `POST /query`,
   the full pipeline (query → plan → retrieve → rerank → evidence → synthesis
   → citation validation)
+- A real evaluation framework comparing a baseline RAG pipeline (dense
+  retrieval → top-k → LLM, no planning/reranking/evidence/citations)
+  against the full agentic pipeline, over a small self-contained benchmark
+  corpus spanning every category the spec calls for (simple factual,
+  comparison, temporal, analytical, aggregation, ambiguous, unanswerable,
+  contradictory evidence) — see "Baseline vs. agentic RAG" below for real,
+  captured results, not fabricated numbers
 
 ## Local setup
 
@@ -94,6 +101,54 @@ A Docker Compose stack (`docker/docker-compose.yml`) is maintained for CI and
 for environments that can run Docker, but is not exercised in local
 day-to-day development on this machine — see `docs/architecture.md` for why.
 
+## Baseline vs. agentic RAG
+
+Run it yourself: `python benchmarks/run_evaluation.py --embedding local --llm mock`
+(defaults shown). This rebuilds a small 15-document synthetic corpus fresh
+from the real ingestion pipeline, runs both pipelines over 9 cases spanning
+every category spec §33 asks for, and writes a full JSON report to
+`benchmarks/results/latest.json` (committed, from a real run — nothing
+below is a fabricated number).
+
+**Baseline**: Query → Dense Retrieval → Top-K → LLM. No planning, no hybrid
+retrieval, no reranking, no evidence judgment, no citations.
+**Agentic**: Query → Analyze → Plan → Hybrid Retrieval → Rerank → Evidence
+Judge → Refine if necessary → Synthesize → Citation Validate.
+
+Captured `2026-09-03`, local sentence-transformers embeddings + mock LLM:
+
+| Metric | Baseline | Agentic |
+|---|---|---|
+| Recall@5 (excl. ambiguous/unanswerable) | 1.000 | 1.000 |
+| Precision@5 | 0.286 | 0.286 |
+| MRR | 0.929 | 0.857 |
+| NDCG@5 | 0.947 | 0.903 |
+| Hit Rate@5 | 1.000 | 1.000 |
+| Mean latency | 0.041s | 0.090s |
+| Citation precision / completeness | n/a (no citations) | 1.000 / 1.000 |
+
+Retrieval scores are close between the two on this small corpus — both
+search the same index, and the corpus isn't hard enough for reranking/
+expansion/decomposition to move the needle much. **The real difference is
+behavioral, not the retrieval numbers**: on the "unanswerable" case (no
+relevant document exists at all), the agentic pipeline returns
+`insufficient_evidence` instead of guessing; on the "contradictory_evidence"
+case (two sources reporting different numbers, no way to prefer one), it
+returns `conflicting_evidence` and surfaces the specific conflicting claims.
+The baseline pipeline has no such option — it always emits *an* answer, with
+no signal to the caller about whether the evidence actually supported it.
+
+Generation-quality numbers from this specific run (`answer_relevance`, and
+implicitly `mean_estimated_tokens`) are **not** a real quality signal —
+`MockLLMProvider` excerpts evidence deterministically rather than generating
+language, since no real LLM provider (Ollama, OpenAI) is available in this
+environment. The retrieval-side comparison above is real (real local
+embeddings, real retrieval/rerank/evidence code); the generation side needs
+`--llm ollama` or `--llm openai` with real credentials to mean anything.
+Three real bugs in the contradiction detector were found and fixed by
+actually running this benchmark against real corpus text — see
+`docs/architecture.md` for what they were.
+
 ## Design decisions
 
 See `docs/architecture.md`.
@@ -109,7 +164,7 @@ See `docs/architecture.md`.
 7. ✅ Agentic retrieval loop (bounded iteration, refinement)
 8. ✅ Evidence evaluation + contradiction detection
 9. ✅ Answer synthesis + citations + citation validation
-10. Evaluation framework (baseline vs. agentic RAG benchmark)
+10. ✅ Evaluation framework (baseline vs. agentic RAG benchmark)
 11. Observability (OpenTelemetry/metrics) + SSE streaming
 12. Frontend
 13. Security + reliability + performance hardening
@@ -153,5 +208,14 @@ See `docs/architecture.md`.
   URL
 - Citation numbering doesn't deduplicate — the same chunk cited by two
   different claims gets two different citation numbers
-- Everything past Phase 9 (the evaluation harness, streaming, frontend)
-  does not exist yet
+- `citation_recall` (spec §33) isn't computed — needs a ground-truth
+  "which chunks must be cited" label the benchmark fixtures don't carry
+- Generation-quality benchmark numbers are plumbing-only without a real
+  LLM provider configured (see "Baseline vs. agentic RAG" above)
+- The benchmark corpus (15 documents) is deliberately small for a fast,
+  self-contained, repo-committed run — too small to meaningfully stress
+  hybrid fusion/reranking/decomposition the way a realistic corpus would
+- Benchmark results aren't persisted to the database (`evaluation_datasets`/
+  `evaluation_cases`/`evaluation_results` tables exist in the schema since
+  Phase 1 but are unused) — only written to a JSON file
+- Everything past Phase 10 (streaming, frontend) does not exist yet

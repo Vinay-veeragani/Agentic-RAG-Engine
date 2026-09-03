@@ -1,0 +1,402 @@
+{
+  "generated_at": "2026-09-03T12:04:09.067531+00:00",
+  "embedding_provider": "local",
+  "llm_provider": "mock",
+  "cases": [
+    {
+      "query": "What was the total revenue in fiscal year 2024?",
+      "category": "simple_factual",
+      "relevant_document_count": 1,
+      "baseline": {
+        "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
+        "latency_seconds": 0.04085699992720038,
+        "estimated_tokens": 57,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "mrr": 0.5,
+          "ndcg": 0.6309297535714575,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.75,
+        "status": null,
+        "iterations": null,
+        "citation_metrics": null
+      },
+      "agentic": {
+        "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
+        "latency_seconds": 0.04742000007536262,
+        "estimated_tokens": 57,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "mrr": 0.5,
+          "ndcg": 0.6309297535714575,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.75,
+        "status": "grounded",
+        "iterations": 1,
+        "citation_metrics": {
+          "claims_total": 1,
+          "claims_supported": 1,
+          "citations_total": 1,
+          "citations_entailed": 1
+        }
+      }
+    },
+    {
+      "query": "What was the operating margin in fiscal year 2023?",
+      "category": "simple_factual",
+      "relevant_document_count": 1,
+      "baseline": {
+        "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
+        "latency_seconds": 0.07290479994844645,
+        "estimated_tokens": 57,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "mrr": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.75,
+        "status": null,
+        "iterations": null,
+        "citation_metrics": null
+      },
+      "agentic": {
+        "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
+        "latency_seconds": 0.048726500011980534,
+        "estimated_tokens": 57,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "mrr": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.75,
+        "status": "grounded",
+        "iterations": 1,
+        "citation_metrics": {
+          "claims_total": 1,
+          "claims_supported": 1,
+          "citations_total": 1,
+          "citations_entailed": 1
+        }
+      }
+    },
+    {
+      "query": "How did revenue change between 2023 and 2024?",
+      "category": "comparison",
+      "relevant_document_count": 2,
+      "baseline": {
+        "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
+        "latency_seconds": 0.02556509990245104,
+        "estimated_tokens": 57,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.4,
+          "mrr": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.125,
+        "status": null,
+        "iterations": null,
+        "citation_metrics": null
+      },
+      "agentic": {
+        "answer": "The company faces risks including increased competition, foreign currency fluctuation, and supply chain disruption. Regulatory changes in key markets could adversely affect operations and future reven",
+        "latency_seconds": 0.030635599978268147,
+        "estimated_tokens": 51,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.4,
+          "mrr": 0.5,
+          "ndcg": 0.6934264036172708,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.125,
+        "status": "grounded",
+        "iterations": 1,
+        "citation_metrics": {
+          "claims_total": 1,
+          "claims_supported": 1,
+          "citations_total": 1,
+          "citations_entailed": 1
+        }
+      }
+    },
+    {
+      "query": "What changed in R&D spending from 2023 to 2024?",
+      "category": "temporal",
+      "relevant_document_count": 1,
+      "baseline": {
+        "answer": "Research and development spending in 2024 totaled $30 million, a 20 percent increase from $25 million in 2023, reflecting continued investment in product innovation.",
+        "latency_seconds": 0.03387109993491322,
+        "estimated_tokens": 47,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "mrr": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.2857142857142857,
+        "status": null,
+        "iterations": null,
+        "citation_metrics": null
+      },
+      "agentic": {
+        "answer": "Research and development spending in 2024 totaled $30 million, a 20 percent increase from $25 million in 2023, reflecting continued investment in product innovation.",
+        "latency_seconds": 0.032920700032263994,
+        "estimated_tokens": 47,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "mrr": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.2857142857142857,
+        "status": "grounded",
+        "iterations": 1,
+        "citation_metrics": {
+          "claims_total": 1,
+          "claims_supported": 1,
+          "citations_total": 1,
+          "citations_entailed": 1
+        }
+      }
+    },
+    {
+      "query": "Why might the company's revenue growth be at risk?",
+      "category": "analytical",
+      "relevant_document_count": 1,
+      "baseline": {
+        "answer": "The company faces risks including increased competition, foreign currency fluctuation, and supply chain disruption. Regulatory changes in key markets could adversely affect operations and future reven",
+        "latency_seconds": 0.03023200004827231,
+        "estimated_tokens": 51,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "mrr": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.14285714285714285,
+        "status": null,
+        "iterations": null,
+        "citation_metrics": null
+      },
+      "agentic": {
+        "answer": "The company faces risks including increased competition, foreign currency fluctuation, and supply chain disruption. Regulatory changes in key markets could adversely affect operations and future reven",
+        "latency_seconds": 0.10726660001091659,
+        "estimated_tokens": 51,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "mrr": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.14285714285714285,
+        "status": "grounded",
+        "iterations": 1,
+        "citation_metrics": {
+          "claims_total": 1,
+          "claims_supported": 1,
+          "citations_total": 1,
+          "citations_entailed": 1
+        }
+      }
+    },
+    {
+      "query": "What was the combined revenue across fiscal years 2023 and 2024?",
+      "category": "aggregation",
+      "relevant_document_count": 2,
+      "baseline": {
+        "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
+        "latency_seconds": 0.03048560000024736,
+        "estimated_tokens": 57,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.4,
+          "mrr": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.36363636363636365,
+        "status": null,
+        "iterations": null,
+        "citation_metrics": null
+      },
+      "agentic": {
+        "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
+        "latency_seconds": 0.04454879998229444,
+        "estimated_tokens": 57,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.4,
+          "mrr": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.36363636363636365,
+        "status": "grounded",
+        "iterations": 1,
+        "citation_metrics": {
+          "claims_total": 1,
+          "claims_supported": 1,
+          "citations_total": 1,
+          "citations_entailed": 1
+        }
+      }
+    },
+    {
+      "query": "What about the numbers?",
+      "category": "ambiguous",
+      "relevant_document_count": 0,
+      "baseline": {
+        "answer": "Quarterly revenue for Q3 2024 declined 9 percent due to weaker demand.",
+        "latency_seconds": 0.04069570009596646,
+        "estimated_tokens": 23,
+        "retrieval": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "mrr": 0.0,
+          "ndcg": 0.0,
+          "hit_rate": 0.0
+        },
+        "answer_relevance": 0.0,
+        "status": null,
+        "iterations": null,
+        "citation_metrics": null
+      },
+      "agentic": {
+        "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
+        "latency_seconds": 0.11416200001258403,
+        "estimated_tokens": 57,
+        "retrieval": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "mrr": 0.0,
+          "ndcg": 0.0,
+          "hit_rate": 0.0
+        },
+        "answer_relevance": 0.25,
+        "status": "grounded",
+        "iterations": 1,
+        "citation_metrics": {
+          "claims_total": 1,
+          "claims_supported": 1,
+          "citations_total": 1,
+          "citations_entailed": 1
+        }
+      }
+    },
+    {
+      "query": "What is the CEO's favorite color?",
+      "category": "unanswerable",
+      "relevant_document_count": 0,
+      "baseline": {
+        "answer": "The company expanded employee health benefits, adding paid parental leave and a wellness program subsidy for all full-time staff.",
+        "latency_seconds": 0.03556400001980364,
+        "estimated_tokens": 37,
+        "retrieval": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "mrr": 0.0,
+          "ndcg": 0.0,
+          "hit_rate": 0.0
+        },
+        "answer_relevance": 0.2,
+        "status": null,
+        "iterations": null,
+        "citation_metrics": null
+      },
+      "agentic": {
+        "answer": null,
+        "latency_seconds": 0.22716530004981905,
+        "estimated_tokens": 0,
+        "retrieval": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "mrr": 0.0,
+          "ndcg": 0.0,
+          "hit_rate": 0.0
+        },
+        "answer_relevance": 0.0,
+        "status": "insufficient_evidence",
+        "iterations": 3,
+        "citation_metrics": null
+      }
+    },
+    {
+      "query": "What was the Q3 2024 revenue decline percentage?",
+      "category": "contradictory_evidence",
+      "relevant_document_count": 2,
+      "baseline": {
+        "answer": "Quarterly revenue for Q3 2024 declined 4 percent due to weaker demand.",
+        "latency_seconds": 0.06054150010459125,
+        "estimated_tokens": 23,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.4,
+          "mrr": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.2857142857142857,
+        "status": null,
+        "iterations": null,
+        "citation_metrics": null
+      },
+      "agentic": {
+        "answer": null,
+        "latency_seconds": 0.1537139000138268,
+        "estimated_tokens": 0,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.4,
+          "mrr": 1.0,
+          "ndcg": 1.0,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": null,
+        "status": "conflicting_evidence",
+        "iterations": 1,
+        "citation_metrics": null
+      }
+    }
+  ],
+  "baseline_summary": {
+    "mean_recall": 1.0,
+    "mean_precision": 0.2857142857142857,
+    "mean_mrr": 0.9285714285714286,
+    "mean_ndcg": 0.9472756790816368,
+    "mean_hit_rate": 1.0,
+    "mean_latency_seconds": 0.04119075555354357,
+    "mean_estimated_tokens": 45.44444444444444,
+    "mean_answer_relevance": 0.3225468975468975,
+    "citation_metrics": null
+  },
+  "agentic_summary": {
+    "mean_recall": 1.0,
+    "mean_precision": 0.2857142857142857,
+    "mean_mrr": 0.8571428571428571,
+    "mean_ndcg": 0.9034794510269613,
+    "mean_hit_rate": 1.0,
+    "mean_latency_seconds": 0.0896177111297018,
+    "mean_estimated_tokens": 41.888888888888886,
+    "mean_answer_relevance": 0.333400974025974,
+    "citation_metrics": {
+      "mean_precision": 1.0,
+      "mean_completeness": 1.0,
+      "cases_with_citations": 7,
+      "total_cases": 9
+    }
+  }
+}

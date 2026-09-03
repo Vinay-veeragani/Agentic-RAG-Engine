@@ -59,11 +59,12 @@ DEFAULT_SOURCE_AUTHORITY_ORDER = [
 
 _METRIC_PATTERN = re.compile(
     r"(revenue|profit|margin|growth|decline|earnings|sales|income)"
-    r"\D{0,20}?(-?\d+(?:\.\d+)?)\s*%",
+    r"\D{0,20}?(-?\d+(?:\.\d+)?)\s*(?:%|percent\b|per cent\b)",
     re.IGNORECASE,
 )
 _YEAR_PATTERN = re.compile(r"\b((?:19|20)\d{2})\b")
 _NUMERIC_EPSILON = 1e-9
+_MAX_CONTRADICTION_SCOPE = 4
 
 
 class EvidenceAssessment(BaseModel):
@@ -141,8 +142,18 @@ class EvidenceAgent:
     def _detect_contradictions(
         self, candidates: list[RetrievedCandidate]
     ) -> list[Contradiction]:
+        # Scoped to the most relevant handful, not the whole (possibly
+        # padded-out) evidence list: a low-relevance chunk that only made it
+        # into the evidence pool to fill out top_k shouldn't be able to
+        # trigger a conflict against the genuinely top-ranked evidence. Found
+        # via the Phase 10 benchmark — an unrelated numeric conflict ranked
+        # 7th of 8 was still flagging every query that happened to retrieve it.
+        scoped = sorted(candidates, key=lambda c: c.rank if c.rank is not None else 10**9)[
+            :_MAX_CONTRADICTION_SCOPE
+        ]
+
         mentions: dict[str, list[tuple[float, RetrievedCandidate]]] = defaultdict(list)
-        for candidate in candidates:
+        for candidate in scoped:
             for keyword, value in _METRIC_PATTERN.findall(candidate.content):
                 mentions[keyword.lower()].append((float(value), candidate))
 
@@ -155,6 +166,13 @@ class EvidenceAgent:
                     if cand_a.document_id == cand_b.document_id:
                         continue
                     if abs(value_a - value_b) < _NUMERIC_EPSILON:
+                        continue
+                    years_a = _extract_years(cand_a.content)
+                    years_b = _extract_years(cand_b.content)
+                    if years_a and years_b and not (years_a & years_b):
+                        # Different, non-overlapping periods (spec §19) —
+                        # e.g. a 2023 margin and a 2024 margin naturally
+                        # differ; that's not a contradiction, just time.
                         continue
                     contradictions.append(
                         Contradiction(
