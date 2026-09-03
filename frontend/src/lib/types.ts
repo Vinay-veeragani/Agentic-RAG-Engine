@@ -228,6 +228,10 @@ export interface SettingsResponse {
   max_tokens_per_query: number;
   max_query_latency_seconds: number;
   max_upload_size_bytes: number;
+  auth_enabled: boolean;
+  rate_limit_enabled: boolean;
+  rate_limit_requests_per_window: number;
+  rate_limit_window_seconds: number;
 }
 
 export interface HealthResponse {

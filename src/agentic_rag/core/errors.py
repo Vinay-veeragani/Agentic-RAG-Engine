@@ -64,3 +64,11 @@ class UnsupportedFileTypeError(AgenticRAGError):
 
 class PromptInjectionDetectedError(AgenticRAGError):
     code = FailureMode.PROMPT_INJECTION_DETECTED
+
+
+class RateLimitExceededError(AgenticRAGError):
+    code = FailureMode.RATE_LIMITED
+
+
+class UnauthorizedError(AgenticRAGError):
+    code = FailureMode.UNAUTHORIZED

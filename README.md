@@ -4,15 +4,14 @@ An advanced, production-shaped Agentic RAG platform: autonomous knowledge
 retrieval, evidence gathering, verification, and grounded answer generation —
 not a "chat with PDF" demo.
 
-**Status: Phase 12 of 13 complete** (Foundation, ingestion, chunking +
+**Status: all 13 phases complete** (Foundation, ingestion, chunking +
 embeddings, dense/sparse/hybrid retrieval, reranking, query analysis +
 planning, the agentic retrieval loop, deeper evidence evaluation, answer
 synthesis + citations, the evaluation framework, observability + streaming,
-then the full Next.js frontend). Everything below describes what is
-actually implemented today; only security/reliability/performance hardening
-(Phase 13) remains. See `docs/architecture.md` for design decisions,
-rationale, and known gaps, and the implementation plan below for what's
-next.
+the full Next.js frontend, then security/reliability/performance
+hardening). Everything below describes what is actually implemented today.
+See `docs/architecture.md` for design decisions, rationale, and known
+gaps.
 
 ## Frontend
 
@@ -102,6 +101,15 @@ To run it locally: start the backend (`uvicorn agentic_rag.api.main:app
   (per-phase latency, retrieval iterations, cache hits, failures) via
   `GET /metrics` — never exposing hidden chain-of-thought, only structured
   decisions and telemetry
+- Security/reliability hardening (all off/permissive by default, opt-in
+  for a real deployment — see `docs/architecture.md`'s Phase 13 section):
+  optional API-key auth, fixed-window rate limiting, a deterministic
+  prompt-injection filter that excludes suspicious retrieved chunks from
+  the synthesis prompt entirely, `max_query_latency_seconds` now actually
+  enforced (504/TIMEOUT on expiry instead of a request that hangs
+  forever), bounded retry-with-backoff on transient provider failures,
+  configurable DB connection pool sizing, security response headers, and
+  gzip compression
 
 ## Local setup
 
@@ -187,14 +195,26 @@ See `docs/architecture.md`.
 9. ✅ Answer synthesis + citations + citation validation
 10. ✅ Evaluation framework (baseline vs. agentic RAG benchmark)
 11. ✅ Observability (structured events/metrics) + SSE streaming
-12. Frontend
-13. Security + reliability + performance hardening
+12. ✅ Frontend
+13. ✅ Security + reliability + performance hardening
 
 ## Limitations (current)
 
-- No authentication/authorization yet
-- No real managed Redis in local use yet (in-memory fallback only)
+- API-key auth and rate limiting are implemented but off by default (see
+  `docs/architecture.md`'s Phase 13 section) — a real deployment must
+  explicitly set `API_KEYS` and `RATE_LIMIT_ENABLED=true`; there's still
+  no `users`-table-backed identity system, key rotation, or per-key tiers
+- Rate limiting is fixed-window, not sliding-window/token-bucket — a
+  documented burst tradeoff at window boundaries
+- Prompt-injection detection (new in Phase 13) is heuristic/regex-based,
+  not semantic — a rephrased attempt that matches no listed pattern won't
+  be caught
+- No real managed Redis in local use yet (in-memory fallback only) —
+  relevant to rate limiting now too, not only caching
 - No CI pipeline yet
+- No load/performance testing was run (no k6/locust harness) — Phase 13's
+  pool-sizing/retry changes are reasoned improvements, not measured under
+  simulated concurrent load
 - No OCR — a scanned/image-only PDF parses with no extracted text rather
   than failing loudly
 - Markdown tables are not specially recognized (parse as plain text)
@@ -254,5 +274,3 @@ See `docs/architecture.md`.
   browser-automation tool was available) — HTTP-level and type-checking
   verification only; see `docs/architecture.md`'s Phase 12 section
 - No frontend automated tests (component tests, e2e)
-- Everything past Phase 12 (security/reliability/performance hardening,
-  Phase 13) does not exist yet

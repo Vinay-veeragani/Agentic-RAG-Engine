@@ -31,6 +31,7 @@ from agentic_rag.api.schemas.query import (
 from agentic_rag.api.schemas.retrieval import RetrievedCandidateResponse
 from agentic_rag.citations.formatter import format_citation
 from agentic_rag.core.config import Settings, get_settings
+from agentic_rag.core.errors import QueryTimeoutError
 from agentic_rag.core.models import AnswerStatus, TerminationReason
 from agentic_rag.embeddings.base import EmbeddingProvider
 from agentic_rag.generation.llm import LLMProvider
@@ -116,15 +117,24 @@ async def agentic_retrieve(
     POST /query for that)."""
     trace_id = get_trace_id() or "unbound"
     emitter = EventEmitter(trace_id)
+    settings = get_settings()
 
     loop = AgenticRetrievalLoop(
         session=db,
         llm=llm,
         embedding_provider=embedding_provider,
         reranker=reranker,
-        settings=get_settings(),
+        settings=settings,
     )
-    result = await loop.run(body.query, collection_id=body.collection_id, emitter=emitter)
+    try:
+        result = await asyncio.wait_for(
+            loop.run(body.query, collection_id=body.collection_id, emitter=emitter),
+            timeout=settings.max_query_latency_seconds,
+        )
+    except TimeoutError as exc:
+        raise QueryTimeoutError(
+            f"Query exceeded the {settings.max_query_latency_seconds}s latency budget"
+        ) from exc
     emitter.emit(EventType.QUERY_COMPLETED, termination_reason=result.termination_reason.value)
     trace_store.store(trace_id, emitter.events)
 
@@ -246,16 +256,26 @@ async def query(
 ) -> QueryResponse:
     trace_id = get_trace_id() or "unbound"
     emitter = EventEmitter(trace_id)
-    response = await _run_query_pipeline(
-        body.query,
-        body.collection_id,
-        db=db,
-        llm=llm,
-        embedding_provider=embedding_provider,
-        reranker=reranker,
-        settings=get_settings(),
-        emitter=emitter,
-    )
+    settings = get_settings()
+    try:
+        response = await asyncio.wait_for(
+            _run_query_pipeline(
+                body.query,
+                body.collection_id,
+                db=db,
+                llm=llm,
+                embedding_provider=embedding_provider,
+                reranker=reranker,
+                settings=settings,
+                emitter=emitter,
+            ),
+            timeout=settings.max_query_latency_seconds,
+        )
+    except TimeoutError as exc:
+        trace_store.store(trace_id, emitter.events)
+        raise QueryTimeoutError(
+            f"Query exceeded the {settings.max_query_latency_seconds}s latency budget"
+        ) from exc
     trace_store.store(trace_id, emitter.events)
     return response
 
@@ -282,15 +302,24 @@ async def query_stream(
 
     async def run_and_close() -> None:
         try:
-            await _run_query_pipeline(
-                body.query,
-                body.collection_id,
-                db=db,
-                llm=llm,
-                embedding_provider=embedding_provider,
-                reranker=reranker,
-                settings=settings,
-                emitter=emitter,
+            await asyncio.wait_for(
+                _run_query_pipeline(
+                    body.query,
+                    body.collection_id,
+                    db=db,
+                    llm=llm,
+                    embedding_provider=embedding_provider,
+                    reranker=reranker,
+                    settings=settings,
+                    emitter=emitter,
+                ),
+                timeout=settings.max_query_latency_seconds,
+            )
+        except TimeoutError:
+            emitter.emit(
+                EventType.QUERY_FAILED,
+                error="QueryTimeoutError",
+                message=f"Query exceeded the {settings.max_query_latency_seconds}s latency budget",
             )
         except Exception as exc:
             emitter.emit(EventType.QUERY_FAILED, error=type(exc).__name__, message=str(exc))

@@ -991,6 +991,107 @@ silently broken interactivity.
   button) with no progress indicator for large files — acceptable for a
   phase-scoped implementation, not production-polished.
 
+## What's implemented (Phase 13)
+
+Security, reliability, and performance hardening — the last of the 13
+phases. Every addition here follows the same "off/permissive by default,
+opt-in for a real deployment" pattern the rest of the codebase already
+uses for provider selection: nothing extra is required to run locally.
+
+- **Optional API-key auth** (`security/auth.py`): `Settings.api_keys` is
+  empty by default — auth disabled, every route open. Configure one or
+  more keys and every route except `GET /health` and `GET /metrics`
+  requires `Authorization: Bearer <key>` or `X-API-Key: <key>`, enforced
+  by a single middleware in `api/main.py` rather than a per-route
+  dependency, so a new route can't accidentally ship unauthenticated.
+- **Rate limiting** (`security/rate_limit.py`): a fixed-window limiter
+  (`Settings.rate_limit_enabled`, off by default) keyed by API key when
+  present, else client IP, on top of the existing `CacheClient`
+  abstraction (works identically against `InMemoryCache` or real Redis).
+  Fixed-window is a deliberate simplicity tradeoff over a sliding window
+  or token bucket — documented in the module docstring, along with the
+  up-to-2x-burst-at-a-window-boundary behavior that comes with it.
+- **Prompt-injection filtering** (`security/prompt_injection.py`): a
+  bounded, deterministic regex sweep (same style as the contradiction
+  detector) for common injection phrasings ("ignore previous
+  instructions", "you are now", `<|im_start|>` delimiters, etc.) run over
+  every retrieved chunk in `agents/verifier.py` before it reaches a
+  synthesis/citation prompt. A match doesn't prove intent, but is
+  conservative enough that the chunk is excluded from evidence entirely —
+  logged and counted (`agentic_rag_prompt_injection_flagged_total`), never
+  silently included. This is the first thing in the codebase that actually
+  acts on "retrieved documents are untrusted data" for adversarial content
+  embedded *inside* a chunk, rather than just at the metadata-filter layer.
+- **`max_query_latency_seconds` is now actually enforced** (previously
+  configured and exposed via `/settings` but never applied): `POST
+  /query`, `POST /query/retrieve`, and `POST /query/stream` all wrap the
+  pipeline in `asyncio.wait_for`, raising `QueryTimeoutError` (existing
+  `FailureMode.TIMEOUT` → 504) on expiry rather than letting a hung
+  provider call hang the request forever.
+- **Bounded retry with backoff for transient provider failures**
+  (`core/retry.py`): `OpenAILLMProvider`, `OpenAIEmbeddingProvider`, and
+  `OllamaLLMProvider` now retry a connection error/timeout or a retryable
+  5xx up to 3 attempts with exponential backoff before surfacing
+  `ModelProviderError` — never retries a 4xx, since a client error can't
+  succeed differently on a second attempt. This complements (doesn't
+  replace) `generation/llm.py`'s existing one-retry-on-malformed-JSON
+  logic, which is a different failure mode (bad output, not a failed
+  request).
+- **DB connection pool sizing is now configurable**
+  (`Settings.db_pool_size`/`db_max_overflow`, defaults 5/10) instead of
+  SQLAlchemy's hardcoded defaults — `pool_pre_ping=True` was already set.
+- **Security response headers** (`X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, plus HSTS when
+  `app_env=production`) and **gzip response compression**
+  (`GZipMiddleware`, 1KB threshold) added to every response.
+- `/settings` now also reports `auth_enabled`, `rate_limit_enabled`, and
+  the configured rate-limit window/threshold (never the actual API keys)
+  — the frontend's Settings page displays this security posture.
+- Two new `FailureMode` values (`RATE_LIMITED` → 429, `UNAUTHORIZED` →
+  401) and their error classes, following the exact pattern every prior
+  phase's failure modes already use.
+
+### Verification performed
+
+- New tests: `tests/unit/test_security_auth.py`,
+  `tests/unit/test_rate_limit.py`, `tests/unit/test_retry.py`,
+  `tests/adversarial/test_prompt_injection.py` (detector patterns +
+  verifier filtering, including the case where *all* evidence is flagged),
+  `tests/integration/test_security_middleware.py` (401/429/exempt-path
+  behavior against a real running app), `tests/integration/
+  test_query_timeout.py` (a stubbed-hung retrieval loop actually produces
+  a 504/TIMEOUT rather than hanging). 33 new tests, 232 total passing.
+- `ruff check src tests` and `mypy src` (110 files) both clean.
+- `pip-audit` (backend) and `npm audit --omit=dev` (frontend): both report
+  zero known vulnerabilities in current dependencies.
+- Rate limiting defaults to **off** specifically because the existing
+  integration test suite makes far more than 120 requests/minute against
+  a shared in-memory rate-limit bucket when run in one process — this was
+  caught by actually running the full suite with it enabled by default,
+  not by inspection, and is why the default flipped to off rather than
+  the test suite being reshaped around it.
+
+### Known gaps from Phase 13
+
+- Rate limiting is fixed-window, not sliding-window/token-bucket — a
+  documented burst tradeoff at window boundaries (see module docstring).
+- API-key auth has no per-key scoping/rate-limit tiers, no rotation, and
+  no persistence layer — keys live in `Settings.api_keys` (env-configured)
+  only; there's still no `users`-table-backed identity system.
+- Prompt-injection detection is heuristic/regex-based, not semantic — a
+  rephrased injection attempt that doesn't match any listed pattern will
+  not be caught. This is a deliberate, bounded tradeoff (see module
+  docstring) consistent with how contradiction detection is scoped.
+- No CI pipeline yet — hardening work here was verified locally, not by a
+  gate that runs on every push.
+- No load/performance testing was actually run (no k6/locust harness) —
+  the pool-sizing and retry/backoff changes are reasoned engineering
+  improvements, not numbers measured under simulated concurrent load.
+- `InMemoryCache` (rate limiting's default backend) still doesn't persist
+  across restarts or coordinate across multiple worker processes — the
+  same documented gap as before, just now also relevant to rate limiting
+  rather than only session/embedding caching.
+
 ## Known limitations
 
 - No CI pipeline yet.
@@ -998,8 +1099,8 @@ silently broken interactivity.
   across restarts or coordinate across processes, so anything built on top of
   it (rate limiting, cross-worker cache) will not behave correctly under
   multiple app processes until a real Redis is configured.
-- No authentication/authorization implemented — `security/` is empty; user
-  identity in the schema (`users` table) exists but nothing populates or
-  checks it yet.
+- Authentication and rate limiting are both implemented but off by
+  default (see "What's implemented (Phase 13)") — a real deployment must
+  explicitly configure `API_KEYS` and `RATE_LIMIT_ENABLED=true`.
 - OpenTelemetry/Prometheus exporters are not wired up yet — only structured
   JSON logs and a trace-ID today. Full observability lands in its own phase.

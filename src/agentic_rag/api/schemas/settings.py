@@ -14,3 +14,7 @@ class SettingsResponse(BaseModel):
     max_tokens_per_query: int
     max_query_latency_seconds: float
     max_upload_size_bytes: int
+    auth_enabled: bool
+    rate_limit_enabled: bool
+    rate_limit_requests_per_window: int
+    rate_limit_window_seconds: int

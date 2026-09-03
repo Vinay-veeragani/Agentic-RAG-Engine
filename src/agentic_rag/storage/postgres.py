@@ -27,18 +27,28 @@ _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
-def get_engine(database_url: str) -> AsyncEngine:
+def get_engine(
+    database_url: str, *, pool_size: int = 5, max_overflow: int = 10
+) -> AsyncEngine:
     global _engine
     if _engine is None:
-        _engine = create_async_engine(database_url, pool_pre_ping=True)
+        _engine = create_async_engine(
+            database_url,
+            pool_pre_ping=True,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+        )
     return _engine
 
 
-def get_session_factory(database_url: str) -> async_sessionmaker[AsyncSession]:
+def get_session_factory(
+    database_url: str, *, pool_size: int = 5, max_overflow: int = 10
+) -> async_sessionmaker[AsyncSession]:
     global _session_factory
     if _session_factory is None:
         _session_factory = async_sessionmaker(
-            bind=get_engine(database_url), expire_on_commit=False
+            bind=get_engine(database_url, pool_size=pool_size, max_overflow=max_overflow),
+            expire_on_commit=False,
         )
     return _session_factory
 

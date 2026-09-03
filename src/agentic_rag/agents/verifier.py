@@ -20,8 +20,37 @@ from agentic_rag.citations.resolver import Citation, resolve_citations
 from agentic_rag.citations.validator import CitationQualityMetrics, compute_citation_metrics
 from agentic_rag.core.models import AnswerStatus
 from agentic_rag.observability.events import EventEmitter, EventType
-from agentic_rag.observability.metrics import GENERATION_LATENCY_SECONDS
+from agentic_rag.observability.metrics import GENERATION_LATENCY_SECONDS, PROMPT_INJECTION_FLAGGED
+from agentic_rag.observability.tracing import get_logger
 from agentic_rag.retrieval.base import RetrievedCandidate
+from agentic_rag.security.prompt_injection import detect_injection_patterns
+
+logger = get_logger(__name__)
+
+
+def _filter_injected_evidence(
+    evidence: list[RetrievedCandidate],
+) -> list[RetrievedCandidate]:
+    """Drops any candidate whose content matches a prompt-injection heuristic
+    before it ever reaches a synthesis/citation prompt (see
+    `security/prompt_injection.py`) — retrieved documents are untrusted data,
+    so a chunk that looks like it's trying to instruct the model is excluded
+    from evidence entirely rather than passed through with a warning label
+    the model could still be influenced by."""
+    clean: list[RetrievedCandidate] = []
+    for candidate in evidence:
+        matches = detect_injection_patterns(candidate.content)
+        if matches:
+            PROMPT_INJECTION_FLAGGED.inc()
+            logger.warning(
+                "evidence.prompt_injection_flagged",
+                chunk_id=str(candidate.chunk_id),
+                document_id=str(candidate.document_id),
+                patterns=matches,
+            )
+        else:
+            clean.append(candidate)
+    return clean
 
 
 @dataclass(slots=True)
@@ -47,6 +76,7 @@ class AnswerVerifier:
         emitter: EventEmitter | None = None,
     ) -> AnswerVerificationResult:
         start = time.perf_counter()
+        evidence = _filter_injected_evidence(evidence)
         if emitter:
             emitter.emit(EventType.GENERATION_STARTED, evidence_count=len(evidence))
         result = await self._generate(query, evidence, emitter=emitter)

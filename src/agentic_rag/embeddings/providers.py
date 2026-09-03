@@ -17,6 +17,7 @@ import numpy as np
 
 from agentic_rag.core.config import ProviderName, Settings
 from agentic_rag.core.errors import ModelProviderError
+from agentic_rag.core.retry import request_with_retry
 from agentic_rag.embeddings.base import EmbeddingProvider
 from agentic_rag.embeddings.local import DEFAULT_DIMENSIONS
 
@@ -78,12 +79,23 @@ class OpenAIEmbeddingProvider:
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                json={"model": self._model, "input": texts, "dimensions": self._dimensions},
-            )
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await request_with_retry(
+                    lambda: client.post(
+                        "https://api.openai.com/v1/embeddings",
+                        headers={"Authorization": f"Bearer {self._api_key}"},
+                        json={
+                            "model": self._model,
+                            "input": texts,
+                            "dimensions": self._dimensions,
+                        },
+                    )
+                )
+        except httpx.TransportError as exc:
+            raise ModelProviderError(
+                f"OpenAI embeddings request failed after retries: {exc}"
+            ) from exc
         if response.status_code != 200:
             raise ModelProviderError(
                 f"OpenAI embeddings request failed: {response.status_code}",

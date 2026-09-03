@@ -56,6 +56,28 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:3000"]
     )
 
+    # Phase 13 hardening.
+    #
+    # API-key auth: empty (the default) means auth is disabled — every route
+    # stays open, matching every other provider's "mock by default, nothing
+    # requires a credential to run locally" pattern. Set one or more keys to
+    # require `Authorization: Bearer <key>` or `X-API-Key: <key>` on every
+    # route except /health and /metrics.
+    api_keys: list[str] = Field(default_factory=list)
+
+    # Off by default — like `api_keys` above, this matches every other
+    # provider setting's "nothing extra required to run locally" default.
+    # Set true explicitly for a shared/production deployment.
+    rate_limit_enabled: bool = False
+    rate_limit_requests_per_window: int = 120
+    rate_limit_window_seconds: int = 60
+
+    # SQLAlchemy async engine pool sizing — small defaults suit a single local
+    # dev process; production deployments behind multiple workers should size
+    # these to (expected concurrent requests / worker count).
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+
 
 @lru_cache
 def get_settings() -> Settings:

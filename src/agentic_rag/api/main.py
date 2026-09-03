@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from agentic_rag.api.routes.collections import router as collections_router
@@ -31,7 +32,9 @@ from agentic_rag.observability.tracing import (
     configure_logging,
     get_logger,
 )
-from agentic_rag.storage.cache import close_cache
+from agentic_rag.security.auth import auth_required, extract_api_key, is_valid_api_key
+from agentic_rag.security.rate_limit import RateLimiter
+from agentic_rag.storage.cache import close_cache, get_cache
 from agentic_rag.storage.postgres import dispose_engine
 
 logger = get_logger(__name__)
@@ -47,7 +50,14 @@ _ERROR_STATUS: dict[FailureMode, int] = {
     FailureMode.INVALID_DOCUMENT: 400,
     FailureMode.UNSUPPORTED_FILE_TYPE: 415,
     FailureMode.PROMPT_INJECTION_DETECTED: 400,
+    FailureMode.RATE_LIMITED: 429,
+    FailureMode.UNAUTHORIZED: 401,
 }
+
+# Infra probes stay reachable with no credential and outside rate limiting
+# regardless of configuration — a misconfigured API key must never be able
+# to take down health checks or metrics scraping.
+_AUTH_EXEMPT_PATHS = {"/health", "/metrics"}
 
 
 @asynccontextmanager
@@ -71,6 +81,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         expose_headers=["x-trace-id"],
     )
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     @app.middleware("http")
     async def trace_id_middleware(
@@ -81,6 +92,65 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         response.headers["x-trace-id"] = trace_id
         return response
+
+    @app.middleware("http")
+    async def security_headers_middleware(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        if get_settings().app_env == "production":
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=63072000; includeSubDomains"
+            )
+        return response
+
+    @app.middleware("http")
+    async def auth_and_rate_limit_middleware(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        settings = get_settings()
+        if request.method == "OPTIONS" or request.url.path in _AUTH_EXEMPT_PATHS:
+            return await call_next(request)
+
+        api_key = extract_api_key(
+            authorization=request.headers.get("authorization"),
+            x_api_key=request.headers.get("x-api-key"),
+        )
+
+        if auth_required(settings) and not is_valid_api_key(settings, api_key):
+            logger.warning("request.unauthorized", path=request.url.path)
+            body = ErrorResponse(
+                code=FailureMode.UNAUTHORIZED,
+                message="A valid API key is required (Authorization: Bearer <key> or X-API-Key).",
+                trace_id=request.headers.get("x-trace-id"),
+            )
+            return JSONResponse(status_code=401, content=body.model_dump())
+
+        if settings.rate_limit_enabled:
+            limiter = RateLimiter(
+                get_cache(settings.redis_url),
+                requests_per_window=settings.rate_limit_requests_per_window,
+                window_seconds=settings.rate_limit_window_seconds,
+            )
+            client_key = api_key or (request.client.host if request.client else "unknown")
+            allowed, retry_after = await limiter.check(client_key)
+            if not allowed:
+                logger.warning("request.rate_limited", client_key=client_key, path=request.url.path)
+                body = ErrorResponse(
+                    code=FailureMode.RATE_LIMITED,
+                    message="Rate limit exceeded.",
+                    trace_id=request.headers.get("x-trace-id"),
+                )
+                return JSONResponse(
+                    status_code=429,
+                    content=body.model_dump(),
+                    headers={"Retry-After": str(retry_after)},
+                )
+
+        return await call_next(request)
 
     @app.exception_handler(AgenticRAGError)
     async def handle_domain_error(request: Request, exc: AgenticRAGError) -> JSONResponse:

@@ -15,7 +15,11 @@ from agentic_rag.storage.postgres import get_session_factory
 async def get_db_session(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AsyncIterator[AsyncSession]:
-    factory = get_session_factory(settings.database_url)
+    factory = get_session_factory(
+        settings.database_url,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+    )
     async with factory() as session:
         yield session
 

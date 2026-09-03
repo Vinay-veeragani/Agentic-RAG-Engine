@@ -11,6 +11,7 @@ from __future__ import annotations
 import httpx
 
 from agentic_rag.core.errors import ModelProviderError
+from agentic_rag.core.retry import request_with_retry
 from agentic_rag.generation.llm import BaseLLMProvider
 
 DEFAULT_OLLAMA_MODEL = "llama3.2"
@@ -29,20 +30,25 @@ class OllamaLLMProvider(BaseLLMProvider):
         temperature: float = 0.0,
         max_tokens: int = 1024,
     ) -> str:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self._base_url}/api/chat",
-                json={
-                    "model": self.model_name,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "stream": False,
-                    "format": "json",
-                    "options": {"temperature": temperature, "num_predict": max_tokens},
-                },
-            )
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await request_with_retry(
+                    lambda: client.post(
+                        f"{self._base_url}/api/chat",
+                        json={
+                            "model": self.model_name,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt},
+                            ],
+                            "stream": False,
+                            "format": "json",
+                            "options": {"temperature": temperature, "num_predict": max_tokens},
+                        },
+                    )
+                )
+        except httpx.TransportError as exc:
+            raise ModelProviderError(f"Ollama request failed after retries: {exc}") from exc
         if response.status_code != 200:
             raise ModelProviderError(
                 f"Ollama request failed: {response.status_code}",

@@ -59,6 +59,16 @@ export default function SettingsPage() {
                 label="Max upload size"
                 value={`${(settings.max_upload_size_bytes / (1024 * 1024)).toFixed(0)} MB`}
               />
+              <Separator className="my-2" />
+              <Row label="API-key auth" value={settings.auth_enabled ? "enabled" : "disabled"} />
+              <Row
+                label="Rate limiting"
+                value={
+                  settings.rate_limit_enabled
+                    ? `enabled (${settings.rate_limit_requests_per_window} req / ${settings.rate_limit_window_seconds}s)`
+                    : "disabled"
+                }
+              />
             </>
           ) : (
             <p className="text-muted-foreground">Loading…</p>

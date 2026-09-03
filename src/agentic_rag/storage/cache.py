@@ -18,7 +18,7 @@ Redis does.
 
 from __future__ import annotations
 
-import time
+import time as time_module
 from typing import Protocol
 
 from redis.asyncio import Redis
@@ -32,6 +32,8 @@ class CacheClient(Protocol):
     async def get(self, name: str) -> str | bytes | None: ...
     async def set(self, name: str, value: str, *, ex: int | None = None) -> bool | None: ...
     async def delete(self, *names: str) -> int: ...
+    async def incr(self, name: str) -> int: ...
+    async def expire(self, name: str, time: int) -> bool: ...
     async def ping(self) -> bool: ...
     async def aclose(self) -> None: ...
 
@@ -47,18 +49,40 @@ class InMemoryCache:
         if entry is None:
             return None
         value, expires_at = entry
-        if expires_at is not None and time.monotonic() > expires_at:
+        if expires_at is not None and time_module.monotonic() > expires_at:
             del self._store[name]
             return None
         return value
 
     async def set(self, name: str, value: str, *, ex: int | None = None) -> bool | None:
-        expires_at = time.monotonic() + ex if ex is not None else None
+        expires_at = time_module.monotonic() + ex if ex is not None else None
         self._store[name] = (value, expires_at)
         return True
 
     async def delete(self, *names: str) -> int:
         return sum(1 for name in names if self._store.pop(name, None) is not None)
+
+    async def incr(self, name: str) -> int:
+        entry = self._store.get(name)
+        if entry is not None:
+            value, expires_at = entry
+            if expires_at is not None and time_module.monotonic() > expires_at:
+                entry = None
+        if entry is None:
+            self._store[name] = ("1", None)
+            return 1
+        value, expires_at = entry
+        new_value = int(value) + 1
+        self._store[name] = (str(new_value), expires_at)
+        return new_value
+
+    async def expire(self, name: str, time: int) -> bool:
+        entry = self._store.get(name)
+        if entry is None:
+            return False
+        value, _ = entry
+        self._store[name] = (value, time_module.monotonic() + time)
+        return True
 
     async def ping(self) -> bool:
         return True
