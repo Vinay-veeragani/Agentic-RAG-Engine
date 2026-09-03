@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     max_tokens_per_query: int = 8000
     max_query_latency_seconds: float = 60.0
 
+    # Ingestion (spec §36: file size limits).
+    max_upload_size_bytes: int = 25 * 1024 * 1024
+    object_store_root: str = "./data/objects"
+
 
 @lru_cache
 def get_settings() -> Settings:

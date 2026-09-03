@@ -17,7 +17,10 @@ from typing import Protocol
 
 class ObjectStore(Protocol):
     async def save(self, key: str, data: bytes) -> str:
-        """Persist `data` under `key`; returns a storage path/URI."""
+        """Persist `data` under `key`; returns the storage key/reference to
+        persist (e.g. as `DocumentVersion.storage_path`) and pass back into
+        `load()`/`delete()` later — NOT necessarily a raw filesystem path;
+        callers must treat the return value as an opaque reference."""
         ...
 
     async def load(self, key: str) -> bytes: ...
@@ -46,7 +49,7 @@ class LocalFileObjectStore:
         path = self._resolve(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-        return str(path)
+        return key
 
     async def load(self, key: str) -> bytes:
         return self._resolve(key).read_bytes()

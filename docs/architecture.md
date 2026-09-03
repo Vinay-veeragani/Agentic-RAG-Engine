@@ -1,7 +1,8 @@
 # Architecture
 
-Status: Phase 1 (Foundation + database + configuration) complete. This document
-will grow with each phase; it only describes what is actually implemented.
+Status: Phase 2 (Document ingestion) complete, on top of Phase 1 (Foundation +
+database + configuration). This document will grow with each phase; it only
+describes what is actually implemented.
 
 ## Design decisions
 
@@ -103,6 +104,56 @@ chosen for dependency stability; nothing in the codebase depends on a
 - `docker/` — maintained, not run locally (see above).
 - Tests: 6 passing (2 unit, 4 integration against the real local Postgres +
   FastAPI app). `ruff check` and `mypy --strict` both clean.
+
+## What's implemented (Phase 2)
+
+- `ingestion/parsed_document.py` — the common internal representation every
+  parser normalizes into (`ParsedDocument` → `DocumentElement`s), independent
+  of any database model, per spec §5.
+- Seven format-specific parsers behind one `DocumentParser` protocol
+  (`ingestion/parsers/`): PDF (PyMuPDF, heading detection via relative font
+  size, per-page table extraction), DOCX (python-docx, walks the body's
+  paragraphs/tables in document order, heading detection via paragraph
+  style), Markdown (`markdown-it-py` token stream — headings, paragraphs,
+  list items, fenced code blocks; GFM tables are a known gap, see below),
+  HTML (BeautifulSoup, block-tag walk), CSV (one element per row rendered as
+  `column: value` pairs), JSON (one element per record for a list-of-objects
+  shape, otherwise the whole document as one element), and plain text.
+- `ingestion/loaders/validation.py` — file type detection from extension,
+  path-traversal-safe filename sanitization, empty/oversized upload
+  rejection (spec §36).
+- `ingestion/cleaners/text.py` — Unicode normalization, control-character
+  stripping, whitespace cleanup, applied uniformly after parsing regardless
+  of source format.
+- `ingestion/pipeline.py` — orchestrates validate → detect type → parse →
+  persist; re-uploading the same filename to the same collection creates a
+  new `DocumentVersion` rather than a duplicate `Document`.
+- `POST /collections`, `GET /collections`, `POST /documents` (multipart
+  upload), `GET /documents`, `GET /documents/{id}` — wired to the pipeline
+  above; verified against the real local Postgres and by an actual HTTP
+  upload to a running server (not only the test client).
+- Tests: 39 passing (unit: parsers incl. two using real generated PDF/DOCX
+  bytes, validation, config; integration: pipeline + API against real
+  Postgres; adversarial: malformed PDF/DOCX/JSON, path traversal, oversized
+  upload, unsupported type, empty file). `ruff` and `mypy --strict` clean.
+
+### Known gaps from Phase 2
+
+- Markdown tables (GFM extension) are not specially recognized — no table
+  plugin is installed for `markdown-it-py`; a markdown table parses as plain
+  paragraph text. Adding proper support means adding the `mdit-py-plugins`
+  dependency, deferred until something actually needs it.
+- HTML/PDF/DOCX table and heading detection are heuristic/best-effort (font
+  size for PDF headings, tag/style name for HTML/DOCX) — there is no
+  universal "this is a heading" signal in any of these formats.
+- A block tag nested inside another matched block tag in HTML (e.g. a `<p>`
+  inside a `<li>`) is emitted as two separate elements rather than merged.
+- No OCR — a scanned/image-only PDF will parse with zero text elements
+  rather than failing loudly; this is worth a follow-up validation (e.g.
+  flag documents with suspiciously few extracted characters relative to page
+  count) rather than silent success, but is not implemented yet.
+- Caption detection (spec §5) is only implemented for HTML `<figcaption>`;
+  PDF/DOCX captions are not distinguished from regular paragraphs.
 
 ## Known limitations
 
