@@ -4,13 +4,13 @@ An advanced, production-shaped Agentic RAG platform: autonomous knowledge
 retrieval, evidence gathering, verification, and grounded answer generation —
 not a "chat with PDF" demo.
 
-**Status: Phase 3 of 13 complete** (Foundation, ingestion, then chunking +
-embeddings + indexing). Everything below describes what is actually
-implemented today; features from later phases (retrieval, reranking, the
-agentic loop, evidence evaluation, citations, evaluation harness, streaming,
-frontend) are tracked but not yet built. See `docs/architecture.md` for
-design decisions, rationale, and known gaps, and the implementation plan
-below for what's next.
+**Status: Phase 4 of 13 complete** (Foundation, ingestion, chunking +
+embeddings, then dense/sparse/hybrid retrieval). Everything below describes
+what is actually implemented today; features from later phases (reranking,
+the agentic loop, evidence evaluation, citations, evaluation harness,
+streaming, frontend) are tracked but not yet built. See
+`docs/architecture.md` for design decisions, rationale, and known gaps, and
+the implementation plan below for what's next.
 
 ## What's implemented so far
 
@@ -37,6 +37,12 @@ below for what's next.
   parent/child chunks for oversized sections — and semantic similarity-based)
   behind one interface, plus local/mock/remote embedding providers with
   caching, indexed into pgvector via `POST /documents/{id}/ingest`
+- Dense (pgvector cosine similarity), sparse (Postgres full-text search),
+  and hybrid retrieval (Reciprocal Rank Fusion, independently testable as a
+  pure function) with a fixed-field metadata filter (collection, document
+  type, document IDs, section, heading, source, year) — `POST /search` for
+  a simple ranked result list, `POST /retrieve` for the developer view with
+  per-method scores and explicit strategy selection
 
 ## Local setup
 
@@ -66,7 +72,7 @@ See `docs/architecture.md`.
 1. ✅ Foundation + database + configuration
 2. ✅ Document ingestion (PDF/DOCX/TXT/Markdown/HTML/CSV/JSON parsers)
 3. ✅ Chunking + embeddings + indexing
-4. Dense + sparse + hybrid retrieval, Reciprocal Rank Fusion
+4. ✅ Dense + sparse + hybrid retrieval, Reciprocal Rank Fusion
 5. Reranking
 6. Query analysis + retrieval planning
 7. Agentic retrieval loop (bounded iteration, refinement)
@@ -88,7 +94,10 @@ See `docs/architecture.md`.
 - Token counting is an offline whitespace-based approximation, not a real
   LLM subword tokenizer (`tiktoken`'s data host is unreachable from this
   machine — see `docs/architecture.md`)
-- Everything past Phase 3 (retrieval, reranking, the agentic loop, evidence
+- Sparse retrieval is Postgres full-text search (`ts_rank_cd`), not true
+  BM25 — no term-frequency saturation or length normalization
+- No retrieval-result caching yet; every search hits Postgres directly
+- Everything past Phase 4 (reranking, the agentic loop, evidence
   evaluation, generation, citations, evaluation) does not exist yet — there
-  is no search or answer-generation endpoint to call today, only ingestion,
-  indexing, and `/health`
+  is no answer-generation endpoint to call today, only ingestion, indexing,
+  search/retrieve, and `/health`

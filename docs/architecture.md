@@ -1,8 +1,9 @@
 # Architecture
 
-Status: Phase 3 (Chunking + embeddings + indexing) complete, on top of
-Phase 1 (Foundation) and Phase 2 (Document ingestion). This document will
-grow with each phase; it only describes what is actually implemented.
+Status: Phase 4 (Dense + sparse + hybrid retrieval, RRF) complete, on top of
+Phase 1 (Foundation), Phase 2 (Ingestion), and Phase 3 (Chunking +
+embeddings + indexing). This document will grow with each phase; it only
+describes what is actually implemented.
 
 ## Design decisions
 
@@ -225,6 +226,68 @@ chosen for dependency stability; nothing in the codebase depends on a
   calls the real OpenAI API (no key configured in this environment) — its
   request/response shape is verified against OpenAI's documented API, not
   against a live call.
+
+## What's implemented (Phase 4)
+
+- `document_chunks.content_tsv` — a generated (`GENERATED ALWAYS AS ... STORED`)
+  `tsvector` column plus a GIN index, added by hand-written migration
+  `938c2d23d9a7` rather than `alembic revision --autogenerate` (autogenerate
+  doesn't reliably reproduce Postgres's computed-column syntax). Verified
+  with `alembic check` reporting no drift between the ORM model and the
+  applied schema.
+- `retrieval/dense.py` — `DenseRetriever`: pgvector cosine-distance search
+  (`1 - distance` recovers similarity for the normalized vectors every
+  embedding provider here produces), optional `score_threshold`, filterable.
+- `retrieval/sparse.py` — `SparseRetriever`: PostgreSQL full-text search via
+  `plainto_tsquery` + `ts_rank_cd` over `content_tsv`. `plainto_tsquery`
+  (not `to_tsquery`) treats arbitrary user input as plain text rather than
+  tsquery syntax, so operators/parentheses/quotes in a query can't break or
+  redefine the search — exercised directly with adversarial input, not just
+  assumed safe. This is Postgres full-text search, not literal BM25 — see
+  the Phase 4 gap note below.
+- `retrieval/filters.py` — `MetadataRetriever` (filter-only, no query) plus
+  `build_filter_conditions()`, shared by every retriever. Filters are a fixed
+  field list (collection, document type, document IDs, section, heading,
+  source, year) rather than an open-ended key/value language — spec §9's
+  "arbitrary safe metadata filters" is satisfied by that closed field list,
+  not by sanitizing arbitrary filter expressions.
+- `retrieval/fusion.py` — `reciprocal_rank_fusion()`: a pure function over
+  ranked ID lists with zero DB/embedding dependency, per spec §9 "make
+  fusion independently testable." Covered by unit tests that never touch a
+  database.
+- `retrieval/hybrid.py` — `HybridRetriever`: pulls a wider candidate pool
+  (default 30) from dense and sparse independently, fuses via RRF, returns
+  the top-k with dense/sparse/fusion scores all preserved per candidate
+  (never collapsed into one number) — spec §14 provenance requirement,
+  even though reranking itself is Phase 5.
+- `POST /search` (simple, one score per result) and `POST /retrieve`
+  (developer/debug view: per-method scores, explicit strategy selection
+  among dense/sparse/hybrid) — spec §29. Verified against the real local
+  Postgres+pgvector and via actual HTTP requests to a running server.
+- Tests: 85 passing total (added: pure RRF unit tests, filter-condition
+  unit tests, integration tests for all four retrievers and both API
+  routes against real Postgres, adversarial tests for tsquery-breaking
+  characters and SQL-injection-shaped query text). `ruff` and
+  `mypy --strict` both clean.
+
+### Known gaps from Phase 4
+
+- Sparse retrieval is Postgres full-text search (`ts_rank_cd`), which is
+  *not* true BM25 — no term-frequency saturation or document-length
+  normalization the way BM25 defines it. Documented here rather than
+  claimed as BM25-equivalent; a real BM25 implementation (e.g. via the
+  ParadeDB/`pg_search` extension) is future work, not something this phase
+  attempted.
+- No result caching yet (spec §32) — every `/search`/`/retrieve` call hits
+  Postgres directly. Retrieval-result caching is deferred to whichever
+  phase actually needs the latency/cost savings.
+- The full-text search config is hardcoded to `"english"` — not yet
+  per-collection configurable.
+- Persistence of retrieval runs (`retrieval_runs`/`retrieved_chunks` tables,
+  already in the schema since Phase 1) is not wired up yet — these
+  retrievers are called directly, not yet through the query/plan/trace
+  machinery that Phase 6/7 (query planning, the agentic retrieval loop)
+  will add.
 
 ## Known limitations
 

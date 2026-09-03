@@ -21,7 +21,8 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, ForeignKey, Index, UniqueConstraint, func
+from sqlalchemy import JSON, Computed, ForeignKey, Index, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from agentic_rag.storage.postgres import Base
@@ -125,6 +126,13 @@ class DocumentChunk(Base):
     chunk_metadata: Mapped[dict[str, object]] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
+    # Generated column backing sparse (full-text) retrieval — see retrieval/sparse.py.
+    # "english" is a fixed text-search config for now; making it per-collection
+    # configurable is future work (spec §9 sparse retrieval), not needed yet.
+    content_tsv: Mapped[str] = mapped_column(
+        TSVECTOR, Computed("to_tsvector('english', content)", persisted=True), nullable=True
+    )
+
     document_version: Mapped[DocumentVersion] = relationship(back_populates="chunks")
 
     __table_args__ = (
@@ -137,6 +145,7 @@ class DocumentChunk(Base):
             postgresql_with={"m": 16, "ef_construction": 64},
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
+        Index("ix_document_chunks_content_tsv", "content_tsv", postgresql_using="gin"),
     )
 
 
