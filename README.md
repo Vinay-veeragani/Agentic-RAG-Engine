@@ -4,12 +4,12 @@ An advanced, production-shaped Agentic RAG platform: autonomous knowledge
 retrieval, evidence gathering, verification, and grounded answer generation —
 not a "chat with PDF" demo.
 
-**Status: Phase 10 of 13 complete** (Foundation, ingestion, chunking +
+**Status: Phase 11 of 13 complete** (Foundation, ingestion, chunking +
 embeddings, dense/sparse/hybrid retrieval, reranking, query analysis +
 planning, the agentic retrieval loop, deeper evidence evaluation, answer
-synthesis + citations, then the evaluation framework). Everything below
-describes what is actually implemented today; features from later phases
-(streaming, frontend) are tracked but not yet built. See
+synthesis + citations, the evaluation framework, then observability +
+streaming). Everything below describes what is actually implemented today;
+the frontend (Phase 12) is tracked but not yet built. See
 `docs/architecture.md` for design decisions, rationale, and known gaps, and
 the implementation plan below for what's next.
 
@@ -81,6 +81,13 @@ the implementation plan below for what's next.
   comparison, temporal, analytical, aggregation, ambiguous, unanswerable,
   contradictory evidence) — see "Baseline vs. agentic RAG" below for real,
   captured results, not fabricated numbers
+- Full observability: structured SSE streaming of the pipeline's exact
+  spec-defined event sequence (`query.started` → ... → `query.completed`)
+  via `POST /query/stream`, a queryable per-query trace via
+  `GET /queries/{trace_id}/trace`, and Prometheus-compatible metrics
+  (per-phase latency, retrieval iterations, cache hits, failures) via
+  `GET /metrics` — never exposing hidden chain-of-thought, only structured
+  decisions and telemetry
 
 ## Local setup
 
@@ -165,7 +172,7 @@ See `docs/architecture.md`.
 8. ✅ Evidence evaluation + contradiction detection
 9. ✅ Answer synthesis + citations + citation validation
 10. ✅ Evaluation framework (baseline vs. agentic RAG benchmark)
-11. Observability (OpenTelemetry/metrics) + SSE streaming
+11. ✅ Observability (structured events/metrics) + SSE streaming
 12. Frontend
 13. Security + reliability + performance hardening
 
@@ -218,4 +225,15 @@ See `docs/architecture.md`.
 - Benchmark results aren't persisted to the database (`evaluation_datasets`/
   `evaluation_cases`/`evaluation_results` tables exist in the schema since
   Phase 1 but are unused) — only written to a JSON file
-- Everything past Phase 10 (streaming, frontend) does not exist yet
+- Query traces (`GET /queries/{id}/trace`) are in-memory only, per-process,
+  bounded to the 200 most recent — a restart or a second worker process
+  loses/fragments trace history; the `events` table exists in the schema
+  but is unused
+- SSE reconnection isn't implemented — a client can send `Last-Event-ID`
+  but nothing replays missed events from a persisted store
+- No actual OpenTelemetry span export — "observability" today means
+  structured JSON logs, structured events, and Prometheus metrics, not OTel
+  traces
+- No cost estimation — token/cache instruments exist but nothing converts
+  them into an estimated dollar figure
+- Everything past Phase 11 (the frontend) does not exist yet

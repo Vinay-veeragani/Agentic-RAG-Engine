@@ -72,7 +72,9 @@ async def indexed_collection(db_session, object_store) -> uuid.UUID:
 @pytest.mark.asyncio
 async def test_sparse_retriever_finds_exact_term_match(db_session, indexed_collection) -> None:
     retriever = SparseRetriever(db_session)
-    results = await retriever.retrieve("revenue", top_k=5)
+    results = await retriever.retrieve(
+        "revenue", top_k=5, filters=MetadataFilter(collection_id=indexed_collection)
+    )
 
     assert len(results) >= 1
     assert "revenue" in results[0].content.lower()
@@ -82,7 +84,9 @@ async def test_sparse_retriever_finds_exact_term_match(db_session, indexed_colle
 @pytest.mark.asyncio
 async def test_sparse_retriever_returns_empty_for_no_match(db_session, indexed_collection) -> None:
     retriever = SparseRetriever(db_session)
-    results = await retriever.retrieve("nonexistent_term_xyz", top_k=5)
+    results = await retriever.retrieve(
+        "nonexistent_term_xyz", top_k=5, filters=MetadataFilter(collection_id=indexed_collection)
+    )
     assert results == []
 
 
@@ -91,7 +95,9 @@ async def test_dense_retriever_returns_scored_and_sorted_results(
     db_session, indexed_collection
 ) -> None:
     retriever = DenseRetriever(db_session, MockEmbeddingProvider())
-    results = await retriever.retrieve("anything", top_k=5)
+    results = await retriever.retrieve(
+        "anything", top_k=5, filters=MetadataFilter(collection_id=indexed_collection)
+    )
 
     assert len(results) >= 1
     scores = [r.dense_score for r in results]
@@ -104,7 +110,9 @@ async def test_hybrid_retriever_assigns_fusion_score_and_rank(
     db_session, indexed_collection
 ) -> None:
     retriever = HybridRetriever(db_session, MockEmbeddingProvider())
-    results = await retriever.retrieve("revenue", top_k=5)
+    results = await retriever.retrieve(
+        "revenue", top_k=5, filters=MetadataFilter(collection_id=indexed_collection)
+    )
 
     assert len(results) >= 1
     assert results[0].rank == 1
@@ -132,7 +140,9 @@ async def test_hybrid_retriever_preserves_document_source(db_session, object_sto
     )
 
     retriever = HybridRetriever(db_session, MockEmbeddingProvider())
-    results = await retriever.retrieve("revenue", top_k=5)
+    results = await retriever.retrieve(
+        "revenue", top_k=5, filters=MetadataFilter(collection_id=collection.id)
+    )
 
     assert len(results) >= 1
     assert results[0].document_source == "Annual Report"

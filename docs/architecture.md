@@ -1,13 +1,13 @@
 # Architecture
 
-Status: Phase 10 (Evaluation framework) complete, on top of Phase 1
+Status: Phase 11 (Observability + streaming) complete, on top of Phase 1
 (Foundation), Phase 2 (Ingestion), Phase 3 (Chunking + embeddings +
 indexing), Phase 4 (Dense + sparse + hybrid retrieval, RRF), Phase 5
 (Reranking), Phase 6 (Query analysis + retrieval planning), Phase 7
 (Agentic retrieval loop), Phase 8 (Evidence evaluation + contradiction
-detection), and Phase 9 (Answer synthesis + citations + citation
-validation). This document will grow with each phase; it only describes
-what is actually implemented.
+detection), Phase 9 (Answer synthesis + citations + citation validation),
+and Phase 10 (Evaluation framework). This document will grow with each
+phase; it only describes what is actually implemented.
 
 ## Design decisions
 
@@ -798,6 +798,101 @@ is available in this environment — see below.
   `evaluation_results` tables (present in the schema since Phase 1) — the
   benchmark corpus is rebuilt fresh on every run and results are only
   written to a JSON file, not the database.
+
+## What's implemented (Phase 11)
+
+- `observability/events.py` — `EventType` (spec §30's exact 13 event names:
+  `query.started`, `query.analyzed`, `plan.created`, `retrieval.started`,
+  `retrieval.completed`, `reranking.started`, `reranking.completed`,
+  `evidence.evaluated`, `retrieval.refined`, `generation.started`,
+  `citation.validation.started`, `query.completed`, `query.failed`),
+  `Event` (event ID, query/trace ID, timestamp, type, structured payload —
+  nothing else, never hidden chain-of-thought), and `EventEmitter`, which is
+  dual-purpose: it always appends to an in-memory list (read back after a
+  non-streaming call completes) and, when constructed with `queue=True`,
+  also pushes onto an `asyncio.Queue` a concurrent SSE endpoint drains live.
+- `observability/metrics.py` — a small, deliberately narrow set of
+  Prometheus instruments, one per thing spec §31 actually asks to track:
+  per-phase latency histograms (query/retrieval/rerank/generation),
+  retrieval-iteration and estimated-token histograms, cache hit/miss and
+  query-failure counters. Exposed via `GET /metrics` in standard Prometheus
+  text exposition format — scrapeable without a custom exporter.
+- Every phase of the pipeline is instrumented for real, not just
+  logged-and-forgotten: `RetrievalAgent.retrieve()` now returns a
+  `RetrievalOutcome` carrying separately-measured retrieval and rerank
+  latency (not just candidates) and optionally emits
+  `retrieval.started/completed`/`reranking.started/completed`;
+  `AgenticRetrievalLoop` emits `query.started/analyzed`, `plan.created`,
+  `evidence.evaluated`, `retrieval.refined`, records
+  `QUERY_LATENCY_SECONDS`/`RETRIEVAL_ITERATIONS`, and accumulates per-phase
+  latency onto both `IterationTrace` and the final
+  `AgenticRetrievalResult`; `AnswerVerifier` emits `generation.started`/
+  `citation.validation.started` and records its own latency separately.
+  `embeddings/cache.py` records real cache hit/miss counts (previously
+  untracked since Phase 3).
+- **A real design correction made while wiring this up**: `query.completed`
+  was initially emitted inside `AgenticRetrievalLoop.run()` itself — but
+  that loop is *also* the first stage of the full `POST /query` pipeline
+  (synthesis + citation validation follow it there), so a caller using the
+  full pipeline would see `query.completed` fire before synthesis even
+  started. Fixed by moving that emission to whichever caller actually
+  finishes the whole pipeline (`POST /query/retrieve` right after the loop,
+  `POST /query` after synthesis+validation) — `run()` itself only records
+  its own metrics and emits `query.failed` on an internal exception.
+- **Another real bug caught while wiring the emitter through the routes**:
+  `main.py`'s existing middleware already calls `bind_trace_id()` once per
+  request (used for the `x-trace-id` response header) — the new route code
+  was calling `bind_trace_id()` *again*, generating a second, different
+  trace ID than the one already in the response header, so a client
+  comparing `X-Trace-Id` against the response body's `trace_id` field would
+  see two different values. Fixed by having routes read the
+  already-bound ID via `get_trace_id()` instead of rebinding.
+- `POST /query/stream` — SSE version of `POST /query`: the same
+  `_run_query_pipeline()` helper runs as a background `asyncio.Task` while
+  the route drains `EventEmitter`'s queue and yields each event as a
+  `text/event-stream` frame (`id:`/`event:`/`data:` lines) as it happens.
+  Verified against a running server: a real query produced the exact spec
+  §30 event sequence in order, ending in `query.completed`.
+- `GET /queries/{trace_id}/trace` — spec §29's trace endpoint, backed by
+  `TraceStore`: process-local, in-memory only, bounded to the 200 most
+  recent traces (LRU eviction) — not persisted across restarts or shared
+  across worker processes, a documented gap rather than a silent
+  approximation. Both `POST /query` and `POST /query/retrieve` store their
+  emitted events here so a trace is queryable immediately after the call
+  that produced it returns.
+- `GET /metrics` — Prometheus text exposition format via
+  `prometheus_client.generate_latest()`.
+- **Found and fixed a real, pre-existing test-isolation bug while running
+  the full suite after this phase's changes**: several retrieval tests
+  queried without a `collection_id` filter, silently relying on being the
+  only data in a small local database. Months of accumulated manual
+  smoke-testing and benchmark runs against the same shared local Postgres
+  (documented throughout this file) had grown the database large enough
+  that unrelated documents started outranking the tests' own fixtures —
+  invisible until it actually happened. Fixed by scoping every affected
+  test to its own collection, which is also simply the correct way to
+  write an isolated retrieval test regardless of database size.
+- Tests: 199 passing total (added: `EventEmitter`/`TraceStore` behavior,
+  Prometheus metrics rendering, full SSE event-sequence assertions against
+  a real running pipeline, trace round-trip, 404 for an unknown trace,
+  `/metrics` content type). `ruff` and `mypy --strict` both clean.
+
+### Known gaps from Phase 11
+
+- `TraceStore` is in-memory and per-process — restarting the app, or
+  running more than one worker process, loses/fragments trace history. A
+  real implementation would persist to the `events` table (present in the
+  schema since Phase 1, still unused).
+- SSE reconnection is not implemented: a client may send `Last-Event-ID`,
+  but nothing replays events emitted before a reconnect from a persisted
+  store — only `GET /queries/{trace_id}/trace` can be polled afterward,
+  and only if the client already knows its trace ID.
+- OpenTelemetry spans (as opposed to structured JSON logs + these events)
+  are not implemented — spec §31 asks for "OpenTelemetry-compatible
+  tracing," and what exists today is structured logging plus this event
+  system, not actual OTel span export.
+- No cost estimation — cache hit/miss and token-count instruments exist,
+  but nothing converts them into an estimated dollar cost per query.
 
 ## Known limitations
 

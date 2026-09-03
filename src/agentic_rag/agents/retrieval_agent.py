@@ -8,13 +8,17 @@ instead of across retrieval methods.
 
 from __future__ import annotations
 
+import time
 import uuid
+from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentic_rag.agents.planner import RetrievalPlan
 from agentic_rag.core.models import RetrievalStrategy
 from agentic_rag.embeddings.base import EmbeddingProvider
+from agentic_rag.observability.events import EventEmitter, EventType
+from agentic_rag.observability.metrics import RERANK_LATENCY_SECONDS, RETRIEVAL_LATENCY_SECONDS
 from agentic_rag.retrieval.base import RetrievedCandidate
 from agentic_rag.retrieval.dense import DenseRetriever
 from agentic_rag.retrieval.fusion import reciprocal_rank_fusion
@@ -23,6 +27,13 @@ from agentic_rag.retrieval.reranking import Reranker
 from agentic_rag.retrieval.sparse import SparseRetriever
 
 DEFAULT_EVIDENCE_TOP_K = 8
+
+
+@dataclass(slots=True)
+class RetrievalOutcome:
+    candidates: list[RetrievedCandidate]
+    retrieval_latency_seconds: float
+    rerank_latency_seconds: float
 
 
 class RetrievalAgent:
@@ -42,7 +53,8 @@ class RetrievalAgent:
         plan: RetrievalPlan,
         *,
         evidence_top_k: int = DEFAULT_EVIDENCE_TOP_K,
-    ) -> list[RetrievedCandidate]:
+        emitter: EventEmitter | None = None,
+    ) -> RetrievalOutcome:
         """`queries` is one or more variants of the same information need
         (spec §11 expansion) — a single query is the common case.
 
@@ -52,14 +64,36 @@ class RetrievalAgent:
         concurrently where safe" does not apply here; this is exactly the
         "where safe" carve-out, not an oversight.
         """
+        if emitter:
+            emitter.emit(EventType.RETRIEVAL_STARTED, queries=queries, strategy=plan.strategy.value)
+
+        retrieval_start = time.perf_counter()
         variant_results = [await self._retrieve_single(q, plan) for q in queries]
         merged = (
             variant_results[0] if len(variant_results) == 1 else _fuse_variants(variant_results)
         )
+        retrieval_latency = time.perf_counter() - retrieval_start
+        RETRIEVAL_LATENCY_SECONDS.observe(retrieval_latency)
+
+        if emitter:
+            emitter.emit(EventType.RETRIEVAL_COMPLETED, candidate_count=len(merged))
+            emitter.emit(EventType.RERANKING_STARTED, candidate_count=len(merged))
+
+        rerank_start = time.perf_counter()
         reranked = await self._reranker.rerank(queries[0], merged, top_k=evidence_top_k)
         for rank, candidate in enumerate(reranked, start=1):
             candidate.rank = rank
-        return reranked
+        rerank_latency = time.perf_counter() - rerank_start
+        RERANK_LATENCY_SECONDS.observe(rerank_latency)
+
+        if emitter:
+            emitter.emit(EventType.RERANKING_COMPLETED, evidence_count=len(reranked))
+
+        return RetrievalOutcome(
+            candidates=reranked,
+            retrieval_latency_seconds=retrieval_latency,
+            rerank_latency_seconds=rerank_latency,
+        )
 
     async def _retrieve_single(
         self, query_text: str, plan: RetrievalPlan

@@ -15,6 +15,8 @@ from fastapi.responses import JSONResponse
 from agentic_rag.api.routes.collections import router as collections_router
 from agentic_rag.api.routes.documents import router as documents_router
 from agentic_rag.api.routes.health import router as health_router
+from agentic_rag.api.routes.metrics import router as metrics_router
+from agentic_rag.api.routes.query import queries_router
 from agentic_rag.api.routes.query import router as query_router
 from agentic_rag.api.routes.retrieval import router as retrieval_router
 from agentic_rag.api.schemas.errors import ErrorResponse
@@ -94,6 +96,8 @@ def create_app() -> FastAPI:
     app.include_router(documents_router)
     app.include_router(retrieval_router)
     app.include_router(query_router)
+    app.include_router(queries_router)
+    app.include_router(metrics_router)
     return app
 
 

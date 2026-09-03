@@ -28,7 +28,10 @@ async def test_search_endpoint_returns_ranked_results(client) -> None:
         client, collection_id, "weather.txt", b"Heavy rainfall is forecast this week."
     )
 
-    response = await client.post("/search", json={"query": "revenue", "top_k": 5})
+    response = await client.post(
+        "/search",
+        json={"query": "revenue", "top_k": 5, "filters": {"collection_id": collection_id}},
+    )
     assert response.status_code == 200
     body = response.json()
     assert len(body["results"]) >= 1

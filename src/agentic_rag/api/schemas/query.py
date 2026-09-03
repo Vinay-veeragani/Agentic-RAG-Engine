@@ -6,6 +6,7 @@ from agentic_rag.agents.planner import RetrievalPlan
 from agentic_rag.agents.query_analyzer import QueryAnalysis
 from agentic_rag.api.schemas.retrieval import RetrievedCandidateResponse
 from agentic_rag.core.models import AnswerStatus, TerminationReason
+from agentic_rag.observability.events import Event
 
 
 class QueryAnalyzeRequest(BaseModel):
@@ -53,6 +54,8 @@ class IterationTraceResponse(BaseModel):
     contradictions: list[ContradictionResponse]
     years_referenced: list[int]
     spans_multiple_periods: bool
+    retrieval_latency_seconds: float
+    rerank_latency_seconds: float
 
 
 class AgenticRetrieveResponse(BaseModel):
@@ -104,3 +107,12 @@ class QueryResponse(BaseModel):
     citation_precision: float | None
     termination_reason: TerminationReason
     iterations: list[IterationTraceResponse]
+
+
+class TraceResponse(BaseModel):
+    """spec §29's GET /queries/{id}/trace — the same structured events (spec
+    §30) a live SSE stream would have emitted for this query, replayed from
+    this process's in-memory TraceStore."""
+
+    trace_id: str
+    events: list[Event]

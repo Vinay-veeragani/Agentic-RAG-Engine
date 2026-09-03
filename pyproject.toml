@@ -26,6 +26,7 @@ dependencies = [
     "markdown-it-py>=3.0",
     "sentence-transformers>=3.0",
     "numpy>=1.26",
+    "prometheus-client>=0.20",
 ]
 
 [project.optional-dependencies]

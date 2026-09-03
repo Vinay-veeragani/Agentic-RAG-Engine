@@ -11,6 +11,7 @@ implemented literally, not as another prompt.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 
 from agentic_rag.agents.citation_agent import CitationAgent
@@ -18,6 +19,8 @@ from agentic_rag.agents.synthesis_agent import SynthesisAgent
 from agentic_rag.citations.resolver import Citation, resolve_citations
 from agentic_rag.citations.validator import CitationQualityMetrics, compute_citation_metrics
 from agentic_rag.core.models import AnswerStatus
+from agentic_rag.observability.events import EventEmitter, EventType
+from agentic_rag.observability.metrics import GENERATION_LATENCY_SECONDS
 from agentic_rag.retrieval.base import RetrievedCandidate
 
 
@@ -28,6 +31,7 @@ class AnswerVerificationResult:
     citations: list[Citation] = field(default_factory=list)
     removed_claims: list[str] = field(default_factory=list)
     citation_metrics: CitationQualityMetrics | None = None
+    generation_latency_seconds: float = 0.0
 
 
 class AnswerVerifier:
@@ -36,12 +40,34 @@ class AnswerVerifier:
         self._citation_agent = citation_agent
 
     async def generate(
-        self, query: str, evidence: list[RetrievedCandidate]
+        self,
+        query: str,
+        evidence: list[RetrievedCandidate],
+        *,
+        emitter: EventEmitter | None = None,
+    ) -> AnswerVerificationResult:
+        start = time.perf_counter()
+        if emitter:
+            emitter.emit(EventType.GENERATION_STARTED, evidence_count=len(evidence))
+        result = await self._generate(query, evidence, emitter=emitter)
+        result.generation_latency_seconds = time.perf_counter() - start
+        GENERATION_LATENCY_SECONDS.observe(result.generation_latency_seconds)
+        return result
+
+    async def _generate(
+        self,
+        query: str,
+        evidence: list[RetrievedCandidate],
+        *,
+        emitter: EventEmitter | None,
     ) -> AnswerVerificationResult:
         synthesis = await self._synthesis_agent.synthesize(query, evidence)
 
         if synthesis.insufficient_evidence or not synthesis.claims:
             return AnswerVerificationResult(status=AnswerStatus.INSUFFICIENT_EVIDENCE, answer=None)
+
+        if emitter:
+            emitter.emit(EventType.CITATION_VALIDATION_STARTED, claim_count=len(synthesis.claims))
 
         supported_claim_texts: list[str] = []
         removed_claims: list[str] = []

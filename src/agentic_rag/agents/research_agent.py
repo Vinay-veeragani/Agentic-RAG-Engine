@@ -20,11 +20,14 @@ the problem is retrieval quality.
 No hidden chain-of-thought is exposed: `AgenticRetrievalResult` carries
 structured `IterationTrace`s (queries used, strategy, candidate count,
 sufficiency verdict, reason, missing information, contradictions, temporal
-spread) and nothing else.
+spread, per-phase latency) and nothing else. An optional `EventEmitter`
+(spec §30) publishes the same structured decisions as they happen, for a
+live SSE stream or later trace replay — never the reasoning behind them.
 """
 
 from __future__ import annotations
 
+import time
 import uuid
 from dataclasses import dataclass, field
 
@@ -38,7 +41,13 @@ from agentic_rag.core.config import Settings
 from agentic_rag.core.models import TerminationReason
 from agentic_rag.embeddings.base import EmbeddingProvider
 from agentic_rag.generation.llm import LLMProvider
-from agentic_rag.observability.tracing import bind_trace_id
+from agentic_rag.observability.events import EventEmitter, EventType
+from agentic_rag.observability.metrics import (
+    QUERY_FAILURES,
+    QUERY_LATENCY_SECONDS,
+    RETRIEVAL_ITERATIONS,
+)
+from agentic_rag.observability.tracing import bind_trace_id, get_trace_id
 from agentic_rag.retrieval.base import RetrievedCandidate
 from agentic_rag.retrieval.reranking import Reranker
 from agentic_rag.storage.models import Collection
@@ -56,6 +65,8 @@ class IterationTrace:
     contradictions: list[Contradiction] = field(default_factory=list)
     years_referenced: list[int] = field(default_factory=list)
     spans_multiple_periods: bool = False
+    retrieval_latency_seconds: float = 0.0
+    rerank_latency_seconds: float = 0.0
 
 
 @dataclass(slots=True)
@@ -67,6 +78,10 @@ class AgenticRetrievalResult:
     iterations: list[IterationTrace]
     termination_reason: TerminationReason
     evidence: list[RetrievedCandidate]
+    total_latency_seconds: float = 0.0
+    retrieval_latency_seconds: float = 0.0
+    rerank_latency_seconds: float = 0.0
+    retrieval_calls: int = 0
 
 
 class AgenticRetrievalLoop:
@@ -91,18 +106,65 @@ class AgenticRetrievalLoop:
         self._retrieval_agent = RetrievalAgent(session, embedding_provider, reranker)
 
     async def run(
-        self, query_text: str, *, collection_id: uuid.UUID | None = None
+        self,
+        query_text: str,
+        *,
+        collection_id: uuid.UUID | None = None,
+        emitter: EventEmitter | None = None,
     ) -> AgenticRetrievalResult:
-        trace_id = bind_trace_id()
+        get_trace_id() or bind_trace_id()
+        run_start = time.perf_counter()
+        if emitter:
+            emitter.emit(EventType.QUERY_STARTED, query=query_text)
 
+        try:
+            result = await self._run(query_text, collection_id=collection_id, emitter=emitter)
+        except Exception as exc:
+            QUERY_FAILURES.labels(reason=type(exc).__name__).inc()
+            if emitter:
+                emitter.emit(EventType.QUERY_FAILED, error=type(exc).__name__, message=str(exc))
+            raise
+
+        result.total_latency_seconds = time.perf_counter() - run_start
+        QUERY_LATENCY_SECONDS.labels(status=result.termination_reason.value).observe(
+            result.total_latency_seconds
+        )
+        RETRIEVAL_ITERATIONS.observe(len(result.iterations))
+        # Deliberately does NOT emit QUERY_COMPLETED here: this loop is also
+        # used as just the first stage of the full POST /query pipeline
+        # (synthesis + citation validation follow it there), and
+        # "query.completed" is meant to mark the end of the *whole* pipeline
+        # a caller invoked — the caller emits it once everything it's doing
+        # is actually done (see api/routes/query.py).
+        return result
+
+    async def _run(
+        self,
+        query_text: str,
+        *,
+        collection_id: uuid.UUID | None,
+        emitter: EventEmitter | None,
+    ) -> AgenticRetrievalResult:
+        trace_id = get_trace_id() or bind_trace_id()
         evidence_agent = await self._build_evidence_agent(collection_id)
 
         analysis = await self._analyzer.analyze(query_text)
+        if emitter:
+            emitter.emit(EventType.QUERY_ANALYZED, query_type=analysis.query_type.value)
+
         plan = await self._planner.plan(query_text, analysis)
         if collection_id is not None and plan.filters.collection_id is None:
             # Caller-provided scoping always wins over whatever the
             # LLM/mock guessed (it has no way to know a collection_id).
             plan.filters.collection_id = collection_id
+        if emitter:
+            emitter.emit(
+                EventType.PLAN_CREATED,
+                strategy=plan.strategy.value,
+                expand_query=plan.expand_query,
+                decompose=plan.decompose,
+                max_iterations=plan.max_iterations,
+            )
 
         current_queries = [query_text]
         if plan.expand_query:
@@ -112,6 +174,8 @@ class AgenticRetrievalLoop:
         iterations: list[IterationTrace] = []
         evidence: list[RetrievedCandidate] = []
         retrieval_calls = 0
+        total_retrieval_latency = 0.0
+        total_rerank_latency = 0.0
         termination_reason = TerminationReason.MAX_ITERATIONS_REACHED
 
         for iteration in range(1, plan.max_iterations + 1):
@@ -129,23 +193,42 @@ class AgenticRetrievalLoop:
                 # Sequential, not gathered: subqueries share this loop's one
                 # AsyncSession, which does not support concurrent operations
                 # from multiple coroutines (see retrieval_agent.py).
-                subquery_results = [
-                    await self._retrieval_agent.retrieve([subquery], plan)
+                subquery_outcomes = [
+                    await self._retrieval_agent.retrieve([subquery], plan, emitter=emitter)
                     for subquery in subqueries
                 ]
                 retrieval_calls += len(subqueries)
                 candidates = _dedupe_by_chunk_id(
-                    [c for group in subquery_results for c in group]
+                    [c for outcome in subquery_outcomes for c in outcome.candidates]
                 )
+                iteration_retrieval_latency = sum(
+                    o.retrieval_latency_seconds for o in subquery_outcomes
+                )
+                iteration_rerank_latency = sum(o.rerank_latency_seconds for o in subquery_outcomes)
                 queries_used = subqueries
             else:
-                candidates = await self._retrieval_agent.retrieve(current_queries, plan)
+                outcome = await self._retrieval_agent.retrieve(
+                    current_queries, plan, emitter=emitter
+                )
                 retrieval_calls += 1
+                candidates = outcome.candidates
+                iteration_retrieval_latency = outcome.retrieval_latency_seconds
+                iteration_rerank_latency = outcome.rerank_latency_seconds
                 queries_used = current_queries
+
+            total_retrieval_latency += iteration_retrieval_latency
+            total_rerank_latency += iteration_rerank_latency
 
             evidence = candidates
             evaluation = await evidence_agent.evaluate(query_text, candidates)
             assessment = evaluation.assessment
+            if emitter:
+                emitter.emit(
+                    EventType.EVIDENCE_EVALUATED,
+                    sufficient=assessment.sufficient,
+                    reason=assessment.reason,
+                    contradictions=len(evaluation.contradictions),
+                )
             iterations.append(
                 IterationTrace(
                     iteration=iteration,
@@ -158,6 +241,8 @@ class AgenticRetrievalLoop:
                     contradictions=evaluation.contradictions,
                     years_referenced=evaluation.years_referenced,
                     spans_multiple_periods=evaluation.spans_multiple_periods,
+                    retrieval_latency_seconds=iteration_retrieval_latency,
+                    rerank_latency_seconds=iteration_rerank_latency,
                 )
             )
 
@@ -178,6 +263,8 @@ class AgenticRetrievalLoop:
                 break
 
             current_queries = [_refine_query(query_text, assessment.missing_information)]
+            if emitter:
+                emitter.emit(EventType.RETRIEVAL_REFINED, next_queries=current_queries)
 
         return AgenticRetrievalResult(
             query=query_text,
@@ -187,6 +274,9 @@ class AgenticRetrievalLoop:
             iterations=iterations,
             termination_reason=termination_reason,
             evidence=evidence,
+            retrieval_latency_seconds=total_retrieval_latency,
+            rerank_latency_seconds=total_rerank_latency,
+            retrieval_calls=retrieval_calls,
         )
 
     async def _build_evidence_agent(self, collection_id: uuid.UUID | None) -> EvidenceAgent:
