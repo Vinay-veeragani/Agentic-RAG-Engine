@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { QueryResponse } from "@/lib/types";
 
-/** Developer Mode (spec §37): query ID, trace ID, configured providers, top
+/** Developer Mode: query ID, trace ID, configured providers, top
  * K, retrieval strategy, iteration count, latency, and the raw JSON
  * response — never hidden chain-of-thought, since none is produced. */
 export function DevModePanel({ response }: { response: QueryResponse }) {

@@ -51,7 +51,7 @@ export default function CollectionsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Collections</h1>
         <p className="text-muted-foreground">
           A collection groups documents with shared retrieval and source-authority
-          configuration (spec §27/§20).
+          configuration.
         </p>
       </div>
 

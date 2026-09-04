@@ -11,7 +11,7 @@ import type {
   RetrievalPlan,
 } from "@/lib/types";
 
-/** The signature "expand the pipeline" view (spec §37): Query classification
+/** The signature "expand the pipeline" view: Query classification
  * → Retrieval plan → Search → Hybrid fusion → Reranking → Evidence
  * evaluation → Retrieval refinement → Final evidence → Answer synthesis →
  * Citation validation. Renders only the structured decisions the backend

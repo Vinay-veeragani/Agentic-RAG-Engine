@@ -35,7 +35,7 @@ export default function EvaluationsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Evaluations</h1>
         <p className="text-muted-foreground">
-          Real benchmark results (spec §33/§34): baseline single-shot retrieval vs. the full
+          Real benchmark results: baseline single-shot retrieval vs. the full
           agentic pipeline, over a fixed evaluation corpus — no fabricated numbers.
         </p>
       </div>

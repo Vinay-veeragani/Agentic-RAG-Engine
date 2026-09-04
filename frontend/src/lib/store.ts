@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 interface AppState {
-  /** Developer Mode (spec §37): reveals query/trace IDs, provider/model
+  /** Developer Mode: reveals query/trace IDs, provider/model
    * names, iteration counts, token usage, latency, and raw JSON — never
    * hidden chain-of-thought, since none is ever produced or stored. */
   developerMode: boolean;

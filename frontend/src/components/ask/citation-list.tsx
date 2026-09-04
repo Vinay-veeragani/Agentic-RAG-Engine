@@ -15,6 +15,16 @@ export function CitationList({ citations }: { citations: CitationResponse[] }) {
               <div>
                 <p className="text-sm font-medium">{citation.label}</p>
                 <p className="mt-1 text-sm text-muted-foreground">&ldquo;{citation.claim}&rdquo;</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {[
+                    citation.document_filename,
+                    citation.page !== null ? `page ${citation.page}` : null,
+                    citation.section,
+                    citation.source,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
               </div>
               {citation.evidence_score !== null && (
                 <Badge variant="secondary" className="shrink-0">

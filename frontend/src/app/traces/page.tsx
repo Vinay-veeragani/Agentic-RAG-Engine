@@ -22,7 +22,7 @@ export default function TracesPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Retrieval Traces</h1>
         <p className="text-muted-foreground">
-          Look up the raw structured event timeline (spec §30) for any query by trace ID — the
+          Look up the raw structured event timeline for any query by trace ID — the
           same events an SSE stream would have delivered live.
         </p>
       </div>
