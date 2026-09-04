@@ -391,6 +391,19 @@ dependency-aware decomposition.
 - `POST /query/retrieve` — a preview endpoint (like `/query/analyze`)
   returning the full structured trace and final evidence, no synthesized
   answer.
+- `tests/integration/test_research_agent.py::test_loop_refines_query_and_succeeds_on_second_iteration`
+  proves the actual "insufficient → refine → retry → sufficient"
+  transition end to end — the two extremes (instant success, permanent
+  failure) were covered elsewhere, but nothing previously asserted the
+  middle case the whole design rests on. `MockLLMProvider`'s own
+  sufficiency heuristic (query/evidence term overlap) can't reliably
+  demonstrate this on demand, since its deterministic query refinement
+  echoes the original query rather than adding genuinely new search terms
+  — so the test uses a thin wrapper forcing exactly one insufficient
+  judgment before switching to sufficient, while every other structured
+  call (analysis, planning, expansion) still runs through the real mock
+  unchanged. Confirms a real second retrieval fires with a genuinely
+  different, refined query, and both iterations show up in the trace.
 
 ### Two real bugs found by running the loop, not by design review
 

@@ -2,6 +2,7 @@ import uuid
 
 import pytest
 
+from agentic_rag.agents.evidence_agent import EvidenceAssessment
 from agentic_rag.agents.research_agent import AgenticRetrievalLoop
 from agentic_rag.chunking.base import ChunkingConfig, ChunkingStrategy
 from agentic_rag.chunking.pipeline import index_document_version
@@ -12,6 +13,55 @@ from agentic_rag.generation.mock import MockLLMProvider
 from agentic_rag.ingestion.pipeline import ingest_document
 from agentic_rag.retrieval.reranking import MockReranker
 from agentic_rag.storage.models import Collection
+
+
+class _ForcedRefinementLLM:
+    """Wraps MockLLMProvider but forces exactly one insufficient evidence
+    judgment before switching to sufficient, so a test can prove the loop's
+    "insufficient -> refine -> retry -> sufficient" transition actually runs
+    end to end, with a real second retrieval call using a genuinely refined
+    query — not just the two extremes (instant success, permanent failure)
+    every other test in this file covers. Every other structured call
+    (query analysis, planning, expansion, decomposition) still goes through
+    the real MockLLMProvider, unchanged."""
+
+    def __init__(self) -> None:
+        self._inner = MockLLMProvider()
+        self._evidence_calls = 0
+
+    @property
+    def model_name(self) -> str:
+        return self._inner.model_name
+
+    async def complete(self, **kwargs: object) -> str:
+        return await self._inner.complete(**kwargs)  # type: ignore[arg-type]
+
+    async def complete_structured(self, *, system_prompt, user_prompt, schema, temperature=0.0):
+        if schema is EvidenceAssessment:
+            self._evidence_calls += 1
+            if self._evidence_calls == 1:
+                return EvidenceAssessment(
+                    sufficient=False,
+                    reason="Evidence confirms what happened but not why.",
+                    missing_information=["the specific cause of the decline"],
+                    relevance=0.6,
+                    coverage=0.4,
+                    directness=0.3,
+                )
+            return EvidenceAssessment(
+                sufficient=True,
+                reason="Evidence now explains the cause.",
+                missing_information=[],
+                relevance=0.9,
+                coverage=0.9,
+                directness=0.9,
+            )
+        return await self._inner.complete_structured(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            schema=schema,
+            temperature=temperature,
+        )
 
 
 @pytest.fixture
@@ -74,6 +124,44 @@ async def test_loop_terminates_with_sufficient_evidence(db_session, object_store
     assert result.termination_reason == TerminationReason.SUFFICIENT_EVIDENCE
     assert len(result.iterations) >= 1
     assert result.iterations[-1].sufficient is True
+    assert len(result.evidence) >= 1
+
+
+@pytest.mark.asyncio
+async def test_loop_refines_query_and_succeeds_on_second_iteration(
+    db_session, object_store
+) -> None:
+    collection = Collection(name=f"col-{uuid.uuid4().hex[:8]}")
+    db_session.add(collection)
+    await db_session.flush()
+    await _index_text(
+        db_session,
+        object_store,
+        collection.id,
+        "revenue.txt",
+        "Revenue declined due to weaker enterprise demand and pricing pressure.",
+    )
+
+    llm = _ForcedRefinementLLM()
+    settings = Settings(max_retrieval_iterations=3, max_retrieval_calls=8)
+    loop = AgenticRetrievalLoop(
+        session=db_session,
+        llm=llm,
+        embedding_provider=MockEmbeddingProvider(),
+        reranker=MockReranker(),
+        settings=settings,
+    )
+
+    result = await loop.run("why did revenue decline", collection_id=collection.id)
+
+    assert result.termination_reason == TerminationReason.SUFFICIENT_EVIDENCE
+    assert len(result.iterations) == 2
+    assert result.iterations[0].sufficient is False
+    assert result.iterations[1].sufficient is True
+    # The second retrieval call genuinely used a different, refined query —
+    # this is a real retry with new input, not a no-op re-run.
+    assert result.iterations[1].queries_used != result.iterations[0].queries_used
+    assert "cause of the decline" in result.iterations[1].queries_used[0]
     assert len(result.evidence) >= 1
 
 
