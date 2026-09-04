@@ -26,6 +26,7 @@ async def search(
 ) -> SearchResponse:
     """Simple hybrid search — one relevance score per result. For the full
     per-method score breakdown and strategy selection, see POST /retrieve."""
+    body.filters.collection_id = body.collection_id
     retriever = HybridRetriever(db, embedding_provider)
     results = await retriever.retrieve(body.query, top_k=body.top_k, filters=body.filters)
     return SearchResponse(
@@ -62,6 +63,7 @@ async def retrieve(
     to `rerank_top_k` — the "top 20-30 candidates -> reranker -> top 5-10
     evidence chunks" pipeline from spec §14.
     """
+    body.filters.collection_id = body.collection_id
     retrieval_top_k = body.candidate_pool_size if body.rerank else body.top_k
 
     results: list[RetrievedCandidate]

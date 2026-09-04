@@ -30,12 +30,24 @@ async def test_search_endpoint_returns_ranked_results(client) -> None:
 
     response = await client.post(
         "/search",
-        json={"query": "revenue", "top_k": 5, "filters": {"collection_id": collection_id}},
+        json={"query": "revenue", "collection_id": collection_id, "top_k": 5},
     )
     assert response.status_code == 200
     body = response.json()
     assert len(body["results"]) >= 1
     assert "revenue" in body["results"][0]["content"].lower()
+
+
+@pytest.mark.asyncio
+async def test_search_endpoint_requires_collection_id(client) -> None:
+    response = await client.post("/search", json={"query": "revenue", "top_k": 5})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_retrieve_endpoint_requires_collection_id(client) -> None:
+    response = await client.post("/retrieve", json={"query": "revenue", "top_k": 5})
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -49,7 +61,8 @@ async def test_retrieve_endpoint_exposes_per_method_scores(client) -> None:
     )
 
     response = await client.post(
-        "/retrieve", json={"query": "revenue", "strategy": "hybrid", "top_k": 5}
+        "/retrieve",
+        json={"query": "revenue", "collection_id": collection_id, "strategy": "hybrid", "top_k": 5},
     )
     assert response.status_code == 200
     body = response.json()
@@ -69,7 +82,13 @@ async def test_retrieve_endpoint_supports_dense_only_strategy(client) -> None:
     await _upload_and_index(client, collection_id, "notes.txt", b"Some arbitrary content here.")
 
     response = await client.post(
-        "/retrieve", json={"query": "arbitrary", "strategy": "dense", "top_k": 5}
+        "/retrieve",
+        json={
+            "query": "arbitrary",
+            "collection_id": collection_id,
+            "strategy": "dense",
+            "top_k": 5,
+        },
     )
     assert response.status_code == 200
     body = response.json()
@@ -91,8 +110,17 @@ async def test_search_endpoint_scopes_to_collection_filter(client) -> None:
 
     response = await client.post(
         "/search",
-        json={"query": "alpha", "top_k": 10, "filters": {"collection_id": collection_a}},
+        json={"query": "alpha", "collection_id": collection_a, "top_k": 10},
     )
     assert response.status_code == 200
     body = response.json()
     assert len(body["results"]) == 1
+
+    response_b = await client.post(
+        "/search",
+        json={"query": "alpha", "collection_id": collection_b, "top_k": 10},
+    )
+    assert response_b.status_code == 200
+    body_b = response_b.json()
+    assert len(body_b["results"]) == 1
+    assert body_b["results"][0]["document_filename"] == "b.txt"

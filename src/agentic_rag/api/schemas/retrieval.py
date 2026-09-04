@@ -8,6 +8,7 @@ from agentic_rag.retrieval.base import MetadataFilter
 
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
+    collection_id: uuid.UUID
     top_k: int = Field(default=10, ge=1, le=50)
     filters: MetadataFilter = Field(default_factory=MetadataFilter)
 
@@ -31,6 +32,7 @@ class SearchResponse(BaseModel):
 
 class RetrieveRequest(BaseModel):
     query: str = Field(min_length=1)
+    collection_id: uuid.UUID
     strategy: RetrievalStrategy = RetrievalStrategy.HYBRID
     top_k: int = Field(default=10, ge=1, le=50)
     candidate_pool_size: int = Field(default=30, ge=1, le=200)

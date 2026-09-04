@@ -32,6 +32,7 @@ async def test_retrieve_with_rerank_returns_rerank_scores_and_truncates(client) 
         "/retrieve",
         json={
             "query": "revenue",
+            "collection_id": collection_id,
             "strategy": "hybrid",
             "candidate_pool_size": 10,
             "rerank": True,
@@ -53,6 +54,9 @@ async def test_retrieve_without_rerank_has_null_rerank_score(client) -> None:
     collection_id = collection_resp.json()["id"]
     await _upload_and_index(client, collection_id, "notes.txt", b"Some arbitrary content.")
 
-    response = await client.post("/retrieve", json={"query": "arbitrary", "rerank": False})
+    response = await client.post(
+        "/retrieve",
+        json={"query": "arbitrary", "collection_id": collection_id, "rerank": False},
+    )
     assert response.status_code == 200
     assert all(r["rerank_score"] is None for r in response.json()["results"])

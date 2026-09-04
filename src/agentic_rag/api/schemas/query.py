@@ -30,7 +30,7 @@ class QueryAnalyzeResponse(BaseModel):
 
 class AgenticRetrieveRequest(BaseModel):
     query: str = Field(min_length=1)
-    collection_id: uuid.UUID | None = None
+    collection_id: uuid.UUID
 
 
 class ContradictionResponse(BaseModel):
@@ -75,7 +75,7 @@ class AgenticRetrieveResponse(BaseModel):
 
 class QueryRequest(BaseModel):
     query: str = Field(min_length=1)
-    collection_id: uuid.UUID | None = None
+    collection_id: uuid.UUID
 
 
 class CitationResponse(BaseModel):

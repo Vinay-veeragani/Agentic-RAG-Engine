@@ -41,7 +41,7 @@ async def test_retrieve_endpoint_returns_empty_for_nonexistent_collection(client
         "/retrieve",
         json={
             "query": "anything",
-            "filters": {"collection_id": str(uuid.uuid4())},
+            "collection_id": str(uuid.uuid4()),
         },
     )
     assert response.status_code == 200

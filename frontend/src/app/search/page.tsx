@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
+import { CollectionSelect } from "@/components/collection-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,9 +14,13 @@ import { Badge } from "@/components/ui/badge";
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [topK, setTopK] = useState(5);
+  const [collectionId, setCollectionId] = useState<string | null>(null);
 
   const search = useMutation({
-    mutationFn: () => api.search({ query, top_k: topK }),
+    mutationFn: () => {
+      if (!collectionId) throw new Error("Select a collection first.");
+      return api.search({ query, collection_id: collectionId, top_k: topK });
+    },
   });
 
   return (
@@ -38,8 +43,16 @@ export default function SearchPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && query) search.mutate();
+                  if (e.key === "Enter" && query && collectionId) search.mutate();
                 }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Collection</Label>
+              <CollectionSelect
+                value={collectionId}
+                onChange={setCollectionId}
+                placeholder="Select a collection"
               />
             </div>
             <div className="w-24 space-y-1.5">
@@ -53,7 +66,10 @@ export default function SearchPage() {
                 onChange={(e) => setTopK(Number(e.target.value))}
               />
             </div>
-            <Button onClick={() => search.mutate()} disabled={!query || search.isPending}>
+            <Button
+              onClick={() => search.mutate()}
+              disabled={!query || !collectionId || search.isPending}
+            >
               {search.isPending ? "Searching…" : "Search"}
             </Button>
           </div>

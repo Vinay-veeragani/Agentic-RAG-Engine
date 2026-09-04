@@ -106,6 +106,7 @@ export const api = {
 
   search: (body: {
     query: string;
+    collection_id: string;
     top_k?: number;
     filters?: MetadataFilter;
   }): Promise<SearchResponse> =>
@@ -113,6 +114,7 @@ export const api = {
 
   retrieve: (body: {
     query: string;
+    collection_id: string;
     strategy?: string;
     top_k?: number;
     candidate_pool_size?: number;
@@ -127,22 +129,22 @@ export const api = {
       request("/query/analyze", { method: "POST", body: toJsonBody({ query }) }),
     agenticRetrieve: (
       query: string,
-      collectionId?: string,
+      collectionId: string,
     ): Promise<AgenticRetrieveResponse> =>
       request("/query/retrieve", {
         method: "POST",
         body: toJsonBody({ query, collection_id: collectionId }),
       }),
-    ask: (query: string, collectionId?: string): Promise<QueryResponse> =>
+    ask: (query: string, collectionId: string): Promise<QueryResponse> =>
       request("/query", {
         method: "POST",
         body: toJsonBody({ query, collection_id: collectionId }),
       }),
     /** Streams the same pipeline as `ask`, invoking `onEvent` as each
-     * structured event (spec §30) arrives. Resolves once the stream ends. */
+     * structured event arrives. Resolves once the stream ends. */
     stream: async (
       query: string,
-      collectionId: string | undefined,
+      collectionId: string,
       onEvent: (event: StreamEvent) => void,
       signal?: AbortSignal,
     ): Promise<void> => {

@@ -20,7 +20,10 @@ export default function AskPage() {
   const developerMode = useAppStore((s) => s.developerMode);
 
   const ask = useMutation({
-    mutationFn: () => api.query.ask(query, collectionId ?? undefined),
+    mutationFn: () => {
+      if (!collectionId) throw new Error("Select a collection first.");
+      return api.query.ask(query, collectionId);
+    },
   });
 
   return (
@@ -43,8 +46,15 @@ export default function AskPage() {
             rows={3}
           />
           <div className="flex items-center justify-between gap-3">
-            <CollectionSelect value={collectionId} onChange={setCollectionId} />
-            <Button onClick={() => ask.mutate()} disabled={!query || ask.isPending}>
+            <CollectionSelect
+              value={collectionId}
+              onChange={setCollectionId}
+              placeholder="Select a collection"
+            />
+            <Button
+              onClick={() => ask.mutate()}
+              disabled={!query || !collectionId || ask.isPending}
+            >
               {ask.isPending ? "Thinking…" : "Ask"}
             </Button>
           </div>
