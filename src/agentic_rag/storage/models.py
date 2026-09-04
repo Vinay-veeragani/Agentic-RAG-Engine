@@ -146,6 +146,13 @@ class DocumentChunk(Base):
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
         Index("ix_document_chunks_content_tsv", "content_tsv", postgresql_using="gin"),
+        # A version's chunk_index values are assigned by the chunker
+        # (chunking/pipeline.py) and must be unique within that version — a
+        # re-run bug producing a duplicate would otherwise silently double
+        # up a chunk in retrieval with no schema-level guardrail.
+        UniqueConstraint(
+            "document_version_id", "chunk_index", name="uq_document_chunks_version_index"
+        ),
     )
 
 
@@ -213,7 +220,15 @@ class RetrievedChunk(Base):
     rank: Mapped[int]
     selected_as_evidence: Mapped[bool] = mapped_column(default=False)
 
-    __table_args__ = (Index("ix_retrieved_chunks_retrieval_run_id", "retrieval_run_id"),)
+    __table_args__ = (
+        Index("ix_retrieved_chunks_retrieval_run_id", "retrieval_run_id"),
+        # A retrieval run must record each chunk it surfaced at most once —
+        # without this, a fusion/dedup bug could double-count a chunk's
+        # contribution to a run with no schema-level guardrail.
+        UniqueConstraint(
+            "retrieval_run_id", "chunk_id", name="uq_retrieved_chunks_run_chunk"
+        ),
+    )
 
 
 class EvidenceItem(Base):
