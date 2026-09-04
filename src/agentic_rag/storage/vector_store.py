@@ -1,14 +1,12 @@
 """Vector store interface.
 
-Kept as an explicit Protocol — separate from `storage/models.py` — so retrieval
-code (Phase 4) depends on this interface rather than directly on pgvector/
-SQLAlchemy specifics. pgvector-via-Postgres is the only implementation for
-now (spec §9/§28 principle: pgvector as the primary store), but this seam is
-where a different backend would plug in without touching retrieval code.
-
-Not implemented yet: the concrete PgVectorStore lands with dense retrieval in
-Phase 4, once there's an embedding provider (Phase 3) to actually produce
-vectors worth searching.
+Kept as an explicit Protocol — separate from `storage/models.py` — as the
+seam a different vector backend would plug into without touching
+retrieval code. In practice, `retrieval/dense.py` queries pgvector
+directly via SQLAlchemy rather than going through this Protocol: this
+codebase only ever targets pgvector-via-Postgres, so a concrete
+`PgVectorStore` implementing it hasn't actually been built — this type
+exists to name the seam, not because it's wired up yet.
 """
 
 from __future__ import annotations

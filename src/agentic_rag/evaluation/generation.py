@@ -1,9 +1,9 @@
-"""Generation-quality metrics (spec §33).
+"""Generation-quality metrics.
 
 `faithfulness` and `context_relevance` are *not* re-judged here — they are
 directly what `citations/validator.py`'s `citation_precision` (do the
 claims that made it into the answer actually follow from their cited
-evidence?) and Phase 8's `EvidenceAssessment.relevance` (was the retrieved
+evidence?) and `EvidenceAssessment.relevance` (was the retrieved
 context relevant to the query?) already measure. Recomputing them with a
 second LLM judge would be redundant, not more rigorous — the runner reuses
 those existing values instead of adding a third pass here.

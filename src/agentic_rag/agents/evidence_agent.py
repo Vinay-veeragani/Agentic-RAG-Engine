@@ -1,5 +1,5 @@
-"""Evidence evaluation (spec §15), contradiction detection (spec §18),
-temporal awareness (spec §19), and source authority (spec §20).
+"""Evidence evaluation, contradiction detection, temporal awareness, and
+source authority.
 
 Split deliberately by how much genuine reasoning each judgment needs
 (engineering principle #1/#2):
@@ -12,18 +12,19 @@ Split deliberately by how much genuine reasoning each judgment needs
   semantic contradiction detection (e.g. two sources disagreeing in prose
   with no shared number) — that would need real LLM reasoning and is a
   documented gap. What it catches — two different sources reporting a
-  different percentage/number for the same named metric — matches this
-  spec section's own worked example ("Revenue declined 4%.") and is exactly
-  the kind of claim deterministic extraction handles reliably.
-- Source authority: a pure lookup against a *configured* order (spec §20:
-  "Do not hardcode that hierarchy as universally correct"), never an LLM
+  different percentage/number for the same named metric (e.g. two
+  sources both saying "Revenue declined 4%." but disagreeing on the
+  figure) — exactly the kind of claim deterministic extraction handles
+  reliably.
+- Source authority: a pure lookup against a *configured* order
+  ("Do not hardcode that hierarchy as universally correct"), never an LLM
   guess at which source is more authoritative.
 - Temporal spread: regex year extraction — informational, not a hard block.
 
 Never invents a contradiction resolution: `Contradiction.resolution` is set
 only when the configured authority order actually distinguishes the two
 sources; otherwise it stays `None` and the conflict is surfaced as-is
-(spec §18: "If the system cannot resolve the conflict, tell the user
+("If the system cannot resolve the conflict, tell the user
 explicitly").
 """
 
@@ -146,7 +147,7 @@ class EvidenceAgent:
         # padded-out) evidence list: a low-relevance chunk that only made it
         # into the evidence pool to fill out top_k shouldn't be able to
         # trigger a conflict against the genuinely top-ranked evidence. Found
-        # via the Phase 10 benchmark — an unrelated numeric conflict ranked
+        # via the evaluation benchmark — an unrelated numeric conflict ranked
         # 7th of 8 was still flagging every query that happened to retrieve it.
         scoped = sorted(candidates, key=lambda c: c.rank if c.rank is not None else 10**9)[
             :_MAX_CONTRADICTION_SCOPE
@@ -170,7 +171,7 @@ class EvidenceAgent:
                     years_a = _extract_years(cand_a.content)
                     years_b = _extract_years(cand_b.content)
                     if years_a and years_b and not (years_a & years_b):
-                        # Different, non-overlapping periods (spec §19) —
+                        # Different, non-overlapping periods —
                         # e.g. a 2023 margin and a 2024 margin naturally
                         # differ; that's not a contradiction, just time.
                         continue

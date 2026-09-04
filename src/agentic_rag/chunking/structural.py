@@ -14,7 +14,7 @@ class StructuralChunker:
     that fits the token budget becomes one chunk; a section that doesn't gets
     a *parent* chunk (the whole section, for expanded context — intentionally
     allowed to exceed the normal budget) plus *child* chunks produced by
-    `RecursiveChunker` over just that section (spec §7: parent-child chunk
+    `RecursiveChunker` over just that section (parent-child chunk
     relationships).
 
     This is the default chunker: it never destroys document structure the

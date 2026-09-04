@@ -1,9 +1,9 @@
-"""One retrieval-and-rerank pass within the agentic loop (spec §16's
-"retrieve" -> "rerank" steps), supporting more than one query variant at
-once (used for query expansion, spec §11) by fusing per-variant result
-rankings with the same `reciprocal_rank_fusion` used to combine dense+sparse
-in `retrieval/hybrid.py` — applied one level up, across query variants
-instead of across retrieval methods.
+"""One retrieval-and-rerank pass within the agentic loop (the "retrieve" ->
+"rerank" steps), supporting more than one query variant at once (used for
+query expansion) by fusing per-variant result rankings with the same
+`reciprocal_rank_fusion` used to combine dense+sparse in
+`retrieval/hybrid.py` — applied one level up, across query variants instead
+of across retrieval methods.
 """
 
 from __future__ import annotations
@@ -56,11 +56,11 @@ class RetrievalAgent:
         emitter: EventEmitter | None = None,
     ) -> RetrievalOutcome:
         """`queries` is one or more variants of the same information need
-        (spec §11 expansion) — a single query is the common case.
+        (query expansion) — a single query is the common case.
 
         Retrieved sequentially, not via `asyncio.gather`: all variants share
         one `AsyncSession`, and SQLAlchemy's async session does not support
-        concurrent operations from multiple coroutines — spec §12's "execute
+        concurrent operations from multiple coroutines — "execute
         concurrently where safe" does not apply here; this is exactly the
         "where safe" carve-out, not an oversight.
         """
@@ -124,7 +124,7 @@ def _fuse_variants(variant_results: list[list[RetrievedCandidate]]) -> list[Retr
                 by_id[candidate.chunk_id] = candidate
                 continue
             # Keep the best score seen for this chunk across variants —
-            # never lose provenance, per spec §14, even when merging.
+            # never lose provenance, even when merging.
             if candidate.dense_score is not None:
                 if existing.dense_score is None or candidate.dense_score > existing.dense_score:
                     existing.dense_score = candidate.dense_score

@@ -1,5 +1,5 @@
 """Chunk + embed + persist: turns a parsed document into indexed
-`DocumentChunk` rows (spec §7/§8/§9 "indexing")."""
+`DocumentChunk` rows ("indexing")."""
 
 from __future__ import annotations
 

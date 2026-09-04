@@ -1,4 +1,4 @@
-"""`max_query_latency_seconds` (Phase 13) is enforced with `asyncio.wait_for`
+"""`max_query_latency_seconds` is enforced with `asyncio.wait_for`
 around the pipeline in `api/routes/query.py` — a hung provider must produce
 a clean 504/TIMEOUT response, never a request that hangs forever."""
 

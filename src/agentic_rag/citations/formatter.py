@@ -1,4 +1,4 @@
-"""Deterministic citation display formatting (spec §22 example:
+"""Deterministic citation display formatting (example:
 "[1] Annual Report 2025, page 42, Revenue Recognition")."""
 
 from __future__ import annotations

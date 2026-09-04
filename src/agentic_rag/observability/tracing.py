@@ -1,9 +1,9 @@
 """Structured logging + trace ID propagation.
 
 Every request/query gets a `trace_id` that flows through logs, DB rows
-(`queries.trace_id`, `events.trace_id`), and SSE events (spec §17/§30/§31).
+(`queries.trace_id`, `events.trace_id`), and SSE events.
 This module owns generating/holding that ID; it is not a full OpenTelemetry
-setup yet — that's added in the observability phase (§31) once there's an
+setup yet — that's added in the observability phase once there's an
 actual pipeline to trace spans across. Structured JSON logging is real today
 because it costs nothing extra and every later phase benefits from it.
 """

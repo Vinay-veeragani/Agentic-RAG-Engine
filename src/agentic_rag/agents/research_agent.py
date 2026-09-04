@@ -1,4 +1,4 @@
-"""The agentic retrieval loop (spec §16): plan -> retrieve -> rerank ->
+"""The agentic retrieval loop: plan -> retrieve -> rerank ->
 evaluate evidence -> if insufficient, refine and retry -> stop when
 sufficient, contradictory, or budget exhausted.
 
@@ -8,11 +8,11 @@ is itself clamped to `settings.max_retrieval_iterations` by
 `RetrievalPlanner` before this ever runs — a `for` loop over a fixed range
 cannot run forever regardless of what any LLM (or the mock) proposes. A
 second, independent ceiling (`settings.max_retrieval_calls`) is checked every
-iteration in case a single query expands into many retrieval calls (spec
-§12's concurrent subquery execution). Every run ends in exactly one
+iteration in case a single query expands into many retrieval calls via
+concurrent subquery execution. Every run ends in exactly one
 `TerminationReason` — never a silent stop.
 
-An unresolved contradiction between sources (spec §18) ends the run
+An unresolved contradiction between sources ends the run
 immediately rather than looping — refining the search query cannot fix two
 sources genuinely disagreeing, so retrying would just waste budget pretending
 the problem is retrieval quality.
@@ -21,7 +21,7 @@ No hidden chain-of-thought is exposed: `AgenticRetrievalResult` carries
 structured `IterationTrace`s (queries used, strategy, candidate count,
 sufficiency verdict, reason, missing information, contradictions, temporal
 spread, per-phase latency) and nothing else. An optional `EventEmitter`
-(spec §30) publishes the same structured decisions as they happen, for a
+publishes the same structured decisions as they happen, for a
 live SSE stream or later trace replay — never the reasoning behind them.
 """
 
@@ -272,7 +272,7 @@ class AgenticRetrievalLoop:
             if any(c.resolution is None for c in evaluation.contradictions):
                 # An unresolved disagreement between sources — refining the
                 # query won't fix it, so stop and surface it rather than
-                # burning the remaining iteration budget (spec §18).
+                # burning the remaining iteration budget.
                 termination_reason = TerminationReason.CONFLICTING_EVIDENCE
                 break
             if assessment.sufficient:
@@ -369,7 +369,7 @@ def _refine_query(original_query: str, missing_information: list[str]) -> str:
 
 def _dedupe_by_chunk_id(candidates: list[RetrievedCandidate]) -> list[RetrievedCandidate]:
     """Keeps the first occurrence of each chunk across subquery result sets
-    (spec §12 decomposition) rather than re-fusing many small rankings —
+    (decomposition) rather than re-fusing many small rankings —
     a simplification documented in docs/architecture.md, not an oversight."""
     seen: dict[uuid.UUID, RetrievedCandidate] = {}
     for candidate in candidates:

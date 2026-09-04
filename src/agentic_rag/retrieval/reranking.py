@@ -1,10 +1,10 @@
-"""Reranking (spec §14): takes a wider candidate pool from hybrid retrieval
+"""Reranking: takes a wider candidate pool from hybrid retrieval
 down to a precise top-k, using a signal retrieval scores alone don't capture
 (cross-encoders jointly attend over the query and each candidate, unlike
 the independent query/document embeddings behind dense retrieval).
 
 Both retrieval and reranker scores are always preserved on the same
-`RetrievedCandidate` — spec §14 "never lose provenance."
+`RetrievedCandidate` — never lose provenance.
 """
 
 from __future__ import annotations

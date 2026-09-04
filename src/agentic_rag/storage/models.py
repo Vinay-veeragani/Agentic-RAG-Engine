@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models for the full schema (spec §28).
+"""SQLAlchemy ORM models for the full schema.
 
 Design decision: all tables live in this one module rather than split across
 knowledge/, citations/, evaluation/ etc. Domain modules import the ORM classes
@@ -36,7 +36,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from agentic_rag.storage.postgres import Base
 
 # Default dimension for the local mock/sentence-transformers embedding provider
-# (e.g. bge-small-en / all-MiniLM-L6-v2 family). See embeddings/base.py (Phase 3).
+# (e.g. bge-small-en / all-MiniLM-L6-v2 family). See embeddings/base.py.
 EMBEDDING_DIMENSIONS = 384
 
 
@@ -154,7 +154,7 @@ class DocumentChunk(Base):
 
     # Generated column backing sparse (full-text) retrieval — see retrieval/sparse.py.
     # "english" is a fixed text-search config for now; making it per-collection
-    # configurable is future work (spec §9 sparse retrieval), not needed yet.
+    # configurable is future work, not needed yet.
     content_tsv: Mapped[str] = mapped_column(
         TSVECTOR, Computed("to_tsvector('english', content)", persisted=True), nullable=True
     )
@@ -350,7 +350,7 @@ class EvaluationResult(Base):
 
 
 class Event(Base):
-    """Structured telemetry/streaming event log (spec §30/§31)."""
+    """Structured telemetry/streaming event log."""
 
     __tablename__ = "events"
 

@@ -11,7 +11,7 @@ class CollectionCreate(BaseModel):
         default=None,
         description=(
             "Most-to-least-authoritative source labels for this collection "
-            "(spec §20) — e.g. ['Annual Report', 'Press Release']. Not "
+            "— e.g. ['Annual Report', 'Press Release']. Not "
             "hardcoded anywhere as universally correct; omit to use the "
             "built-in default order."
         ),

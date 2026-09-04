@@ -1,4 +1,4 @@
-"""Sparse (PostgreSQL full-text) retrieval (spec §9).
+"""Sparse (PostgreSQL full-text) retrieval.
 
 Uses the `content_tsv` generated column (see storage/models.py) and
 `ts_rank_cd`, which — unlike `ts_rank` — accounts for lexeme proximity, so it

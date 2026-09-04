@@ -1,4 +1,4 @@
-"""Citation resolution (spec §22) — turns an LLM's claim-to-evidence-index
+"""Citation resolution — turns an LLM's claim-to-evidence-index
 references into real, verifiable citations.
 
 The LLM never sees or produces a real chunk_id/document_id: it only
@@ -6,8 +6,8 @@ references evidence by the small 1-based index it was shown in the prompt
 (`[1]`, `[2]`, ...). This function is the *only* place those indices become
 real database IDs, by looking them up in the same evidence list the prompt
 was built from — so a citation can never point at a chunk that wasn't
-actually retrieved (spec: "Never fabricate citation references"). Any index
-outside the evidence list's range is simply dropped, never guessed at.
+actually retrieved: never fabricate citation references. Any index outside
+the evidence list's range is simply dropped, never guessed at.
 """
 
 from __future__ import annotations

@@ -17,7 +17,7 @@ async def test_query_analyzer_returns_structured_analysis() -> None:
 @pytest.mark.asyncio
 async def test_planner_clamps_max_iterations_to_ceiling() -> None:
     """The mock defaults max_iterations to 3; a ceiling of 1 must still win —
-    the plan is never trusted to self-limit (spec §13)."""
+    the plan is never trusted to self-limit."""
     planner = RetrievalPlanner(MockLLMProvider(), max_iterations_ceiling=1)
     analyzer = QueryAnalyzer(MockLLMProvider())
     analysis = await analyzer.analyze("Compare Apple and Microsoft revenue")

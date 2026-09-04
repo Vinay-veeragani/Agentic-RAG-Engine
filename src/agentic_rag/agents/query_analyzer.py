@@ -1,4 +1,4 @@
-"""Query understanding (spec §10) and query expansion (spec §11).
+"""Query understanding and query expansion.
 
 Both return strict pydantic-validated output via
 `LLMProvider.complete_structured` — never uncontrolled free-form planning
@@ -57,7 +57,7 @@ class QueryAnalyzer:
 
 class QueryExpander:
     """Only meaningful when the planner has decided expansion is useful
-    (spec §11: "The planner should decide when expansion is useful. Do not
+    ("The planner should decide when expansion is useful. Do not
     blindly expand every query.") — this class does the expansion itself,
     not the decide-whether-to step."""
 

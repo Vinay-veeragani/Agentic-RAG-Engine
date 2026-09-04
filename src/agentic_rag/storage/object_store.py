@@ -32,7 +32,7 @@ class LocalFileObjectStore:
     """Stores objects under a root directory, one file per key.
 
     `key` must not escape `root_dir` — rejects any key that resolves outside
-    it (path traversal protection, spec §36).
+    it (path traversal protection).
     """
 
     def __init__(self, root_dir: str | Path) -> None:

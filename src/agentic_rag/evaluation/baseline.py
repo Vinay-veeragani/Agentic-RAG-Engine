@@ -1,5 +1,5 @@
 """The baseline pipeline the evaluation framework compares the agentic
-system against (spec §34): Query -> Dense Retrieval -> Top-K -> LLM. No
+system against: Query -> Dense Retrieval -> Top-K -> LLM. No
 query analysis, no planning, no reranking, no evidence judgment, no
 citation validation, no bounded refinement loop — deliberately the
 simplest thing that could be called "RAG," so the comparison actually

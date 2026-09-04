@@ -12,5 +12,5 @@ import hashlib
 
 def compute_checksum(content: bytes) -> str:
     """SHA-256 hex digest — used for the documents/document_versions checksum
-    columns (spec §6/§28) and for cheap duplicate-version detection."""
+    columns and for cheap duplicate-version detection."""
     return hashlib.sha256(content).hexdigest()

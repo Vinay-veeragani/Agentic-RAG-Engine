@@ -1,10 +1,10 @@
-"""Structured agentic-execution events (spec §30).
+"""Structured agentic-execution events.
 
 Every event carries an event ID, query (trace) ID, timestamp, event type,
 and a structured payload — nothing else. This is deliberately the surface
-spec §16/§30 asks for instead of exposing hidden chain-of-thought: an
-external caller (SSE stream, trace replay) only ever sees these structured
-decisions, never raw model reasoning.
+exposed instead of hidden chain-of-thought: an external caller (SSE stream,
+trace replay) only ever sees these structured decisions, never raw model
+reasoning.
 
 `EventEmitter` is dual-purpose: it always appends to an in-memory list
 (consumed synchronously by `POST /query`) and, when constructed with
@@ -99,7 +99,7 @@ _MAX_STORED_TRACES = 200
 class TraceStore:
     """Process-local, in-memory only — not persisted across restarts and not
     shared across worker processes. A real trace store backed by the
-    `events` table (present in the schema since Phase 1) is a documented
+    `events` table (already present in the schema, but unused) is a documented
     gap; this exists so `GET /queries/{id}/trace` and reconnecting SSE
     clients have *something* to read within one process's lifetime, rather
     than the endpoint not existing at all.

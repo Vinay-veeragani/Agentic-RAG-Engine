@@ -1,5 +1,4 @@
-"""Hybrid retrieval: dense + sparse, combined via Reciprocal Rank Fusion
-(spec §9)."""
+"""Hybrid retrieval: dense + sparse, combined via Reciprocal Rank Fusion."""
 
 from __future__ import annotations
 
@@ -33,7 +32,7 @@ class HybridRetriever:
         """Retrieves `candidate_pool_size` candidates from each method (wider
         than `top_k`, so fusion has enough signal to reorder), fuses them,
         and returns the top `top_k` — never losing either method's raw score
-        (spec §14 provenance) even for a candidate only one method found.
+        (provenance) even for a candidate only one method found.
         """
         dense_results = await self._dense.retrieve(
             query_text, top_k=candidate_pool_size, filters=filters

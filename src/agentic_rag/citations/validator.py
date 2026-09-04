@@ -1,9 +1,9 @@
-"""Citation quality metrics (spec §23) — pure arithmetic over already-computed
+"""Citation quality metrics — pure arithmetic over already-computed
 validation results, no LLM call here.
 
-`citation_recall` (spec §33) needs a ground-truth relevant-chunk set from an
+`citation_recall` needs a ground-truth relevant-chunk set from an
 evaluation dataset and isn't computable from a single live query — that
-metric belongs to the Phase 10 evaluation framework, not here.
+metric belongs to the evaluation framework, not here.
 """
 
 from __future__ import annotations

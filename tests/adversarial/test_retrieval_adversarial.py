@@ -1,4 +1,4 @@
-"""Adversarial retrieval inputs (spec §38): queries containing characters
+"""Adversarial retrieval inputs: queries containing characters
 that would be meaningful tsquery/SQL syntax if mishandled. `plainto_tsquery`
 (rather than `to_tsquery`) treats the whole input as plain text rather than
 query syntax, and SQLAlchemy always parameterizes values — this asserts that

@@ -4,7 +4,7 @@ Plain query decomposition (`agents/planner.py::QueryDecomposer`) splits a
 query into subqueries and retrieves each one *independently*, then fuses the
 rankings — real and useful for a query like "what are Acme's revenue and
 profit", where both halves can be searched for directly. It cannot answer
-the harder multi-hop shape spec §12 calls out ("find companies -> then look
+the harder multi-hop shape ("find companies -> then look
 up their values"): a second hop that depends on an entity the *first* hop's
 evidence reveals, which the original query never names at all (e.g. "what
 year was Acme Corp's CEO born" — no document mentions "Acme Corp's CEO" by

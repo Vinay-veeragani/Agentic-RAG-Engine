@@ -1,4 +1,4 @@
-"""Dense (vector similarity) retrieval over pgvector (spec §9)."""
+"""Dense (vector similarity) retrieval over pgvector."""
 
 from __future__ import annotations
 

@@ -8,7 +8,7 @@ class ErrorResponse(BaseModel):
 
     Never includes a stack trace or raw exception text — only the stable
     `code`, a human-readable `message`, and a `trace_id` the caller can hand
-    back for support/debugging (spec §29: don't leak internals to consumers).
+    back for support/debugging — never leak internals to consumers.
     """
 
     code: FailureMode

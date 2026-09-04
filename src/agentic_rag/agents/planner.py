@@ -1,11 +1,11 @@
-"""Retrieval planning (spec §13) and query decomposition (spec §12).
+"""Retrieval planning and query decomposition.
 
 The plan decides *whether* expansion/decomposition/iteration should happen;
 it never executes them. `RetrievalPlanner` is also where the hard budget
 ceilings from `core/config.py` actually get enforced — an LLM (or the mock)
 proposing `max_iterations: 50` must never be trusted; it's clamped here
-before the plan is used by anything downstream (spec §13: "The planner must
-be bounded and validated.").
+before the plan is used by anything downstream: the planner must be bounded
+and validated.
 """
 
 from __future__ import annotations

@@ -2,8 +2,8 @@
 
 Every provider (local, remote, mock) implements this one Protocol so nothing
 above this layer — chunking, indexing, retrieval — depends on which model
-actually produced the vectors (spec §8 principle: don't hardcode one
-embedding model throughout the codebase).
+actually produced the vectors — the guiding principle is to avoid
+hardcoding one embedding model throughout the codebase.
 
 `dimensions` must match `storage.models.EMBEDDING_DIMENSIONS` for whatever
 provider is actually configured, since pgvector columns have a fixed

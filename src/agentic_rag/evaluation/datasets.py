@@ -1,5 +1,5 @@
-"""A small, self-contained benchmark corpus + case set (spec §33's
-category list) built fresh at evaluation time — not a hardcoded set of
+"""A small, self-contained benchmark corpus + case set (covering the
+standard benchmark category list) built fresh at evaluation time — not a hardcoded set of
 "expected answers," but real documents ingested through the real pipeline,
 with ground truth (`relevant_document_ids`) resolved from the real
 `Document` rows the ingestion step actually created. Recall/precision/etc.
@@ -94,9 +94,10 @@ _CORPUS_DOCUMENTS: tuple[_CorpusDocument, ...] = (
         source="Annual Report",
     ),
     # Deliberately unclassified sources: the point of this pair is to
-    # demonstrate a genuinely *unresolved* conflict (spec §18 "tell the user
-    # explicitly"), which requires neither the default nor any per-collection
-    # authority order being able to distinguish them. Giving them distinct
+    # demonstrate a genuinely *unresolved* conflict (the system should tell
+    # the user explicitly rather than silently pick a side), which requires
+    # neither the default nor any per-collection authority order being able
+    # to distinguish them. Giving them distinct
     # standard labels (e.g. "Annual Report" vs "Press Release") would let the
     # built-in default authority order silently resolve this case instead —
     # a real, correct behavior, just not the one this case exists to show.

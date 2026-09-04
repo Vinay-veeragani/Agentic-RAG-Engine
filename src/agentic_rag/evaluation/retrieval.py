@@ -1,4 +1,4 @@
-"""Standard retrieval metrics (spec §33) — pure functions over a ranked list
+"""Standard retrieval metrics — pure functions over a ranked list
 of retrieved IDs and a set of relevant IDs. No DB, no LLM, no randomness:
 same inputs always produce the same numbers, so these are testable with
 hand-computed expected values.

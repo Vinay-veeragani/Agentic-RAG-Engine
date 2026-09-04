@@ -1,4 +1,4 @@
-"""Adversarial ingestion inputs (spec §38): malformed/empty documents, path
+"""Adversarial ingestion inputs: malformed/empty documents, path
 traversal filenames, oversized uploads. None of these should ever produce a
 fabricated success — always a specific, typed failure."""
 

@@ -1,5 +1,5 @@
 """Shared retrieval types: the result shape every retriever returns, and the
-metadata filter every retriever accepts (spec §9).
+metadata filter every retriever accepts.
 
 Kept deliberately deterministic and DB-query-shaped — no LLM reasoning
 anywhere in this module, per engineering principle #1.
@@ -17,10 +17,11 @@ from agentic_rag.core.models import DocumentType
 
 class MetadataFilter(BaseModel):
     """Every field is optional and AND-ed together when present. Restricted
-    to a fixed set of columns rather than arbitrary key/value JSON filtering —
-    spec §9 calls for "arbitrary safe metadata filters"; safety here comes
-    from a closed field list (no user-supplied column names or operators
-    reach SQL), not from sanitizing an open-ended filter language."""
+    to a fixed set of columns rather than arbitrary key/value JSON filtering,
+    so filters stay "arbitrary" from the caller's point of view but safe;
+    safety here comes from a closed field list (no user-supplied column names
+    or operators reach SQL), not from sanitizing an open-ended filter
+    language."""
 
     collection_id: uuid.UUID | None = None
     document_type: DocumentType | None = None
@@ -35,8 +36,8 @@ class MetadataFilter(BaseModel):
 @dataclass(slots=True)
 class RetrievedCandidate:
     """One chunk plus its provenance across retrieval methods. Every score
-    field is preserved independently rather than collapsed into one number —
-    spec §14 "never lose provenance." `rank` is 1-indexed position in the
+    field is preserved independently rather than collapsed into one number,
+    so provenance is never lost. `rank` is 1-indexed position in the
     final (possibly fused) result list."""
 
     chunk_id: uuid.UUID

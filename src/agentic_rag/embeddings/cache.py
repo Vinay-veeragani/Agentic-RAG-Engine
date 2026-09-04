@@ -1,4 +1,4 @@
-"""Embedding cache wrapper (spec §32).
+"""Embedding cache wrapper.
 
 Wraps any `EmbeddingProvider` and caches per-text results behind the shared
 `CacheClient` (Redis, or the in-memory fallback — see storage/cache.py).

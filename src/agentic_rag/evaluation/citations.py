@@ -1,8 +1,8 @@
-"""Citation metrics aggregated across a benchmark run (spec §33) — pure
+"""Citation metrics aggregated across a benchmark run — pure
 arithmetic over the per-query `CitationQualityMetrics` already computed by
 `citations/validator.py`; no new LLM calls here.
 
-`citation_recall` (spec §33) needs a ground-truth "which chunks a correct
+`citation_recall` needs a ground-truth "which chunks a correct
 answer must cite" label per case, which this benchmark's fixtures don't
 carry (they only label relevant *documents*, for retrieval metrics) — not
 computed here; a documented gap, not silently approximated.

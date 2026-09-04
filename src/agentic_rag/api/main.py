@@ -1,7 +1,7 @@
 """FastAPI application entrypoint.
 
 Wires: structured logging, a per-request trace ID, domain-error -> HTTP
-translation (never leaking stack traces, spec §29/§36), and route registration.
+translation (never leaking stack traces), and route registration.
 """
 
 from __future__ import annotations

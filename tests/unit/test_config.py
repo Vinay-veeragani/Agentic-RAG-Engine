@@ -2,7 +2,7 @@ from agentic_rag.core.config import Settings
 
 
 def test_default_budgets_are_finite_and_positive() -> None:
-    """Guards spec §1's "never create an infinite agent loop" — these must
+    """Guards the "never create an infinite agent loop" invariant — these must
     never default to 0/unbounded."""
     settings = Settings()
     assert 0 < settings.max_retrieval_iterations <= 10

@@ -223,7 +223,7 @@ class MockLLMProvider:
     ) -> str:
         """Evidence-grounded, not a placeholder: a raw (non-structured)
         completion call is exactly what the evaluation framework's baseline
-        pipeline uses (spec §34 "Dense Retrieval -> Top-K -> LLM"), and a
+        pipeline uses ("Dense Retrieval -> Top-K -> LLM"), and a
         fixed placeholder string there would make every baseline-vs-agentic
         comparison against the mock provider meaningless. Reuses the same
         evidence-excerpting heuristic as structured claim generation."""

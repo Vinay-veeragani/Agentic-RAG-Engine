@@ -1,8 +1,8 @@
 """Cache client factory.
 
 Thin wrapper only — this is not the caching *policy* (key construction,
-invalidation on document/index version changes) described in spec §32, which
-lands with the embedding/retrieval caching work in later phases. This module
+invalidation on document/index version changes) — that lands with the
+embedding/retrieval caching work in later phases. This module
 just gives the rest of the codebase one place to get a cache client behind a
 Redis-compatible interface.
 

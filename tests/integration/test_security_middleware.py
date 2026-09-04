@@ -1,5 +1,5 @@
 """End-to-end checks for the auth + rate-limit middleware wired up in
-`api/main.py` (Phase 13). Each test monkeypatches `api.main.get_settings`
+`api/main.py`. Each test monkeypatches `api.main.get_settings`
 (not the process-wide `core.config.get_settings` lru_cache) so the override
 never leaks into other tests in the same session."""
 

@@ -1,8 +1,8 @@
-"""Prometheus-compatible metrics (spec §31).
+"""Prometheus-compatible metrics.
 
-A thin, deliberately small set of instruments — one per thing spec §31
-actually asks to track (latency per phase, tokens, retrieval iterations,
-cache hits, failures) — rather than instrumenting everything reachable.
+A thin, deliberately small set of instruments — one per thing worth
+tracking (latency per phase, tokens, retrieval iterations, cache hits,
+failures) — rather than instrumenting everything reachable.
 Exposed via `GET /metrics` in the standard Prometheus text exposition
 format (`generate_latest()`), scrapeable by any Prometheus-compatible
 collector without a custom exporter.

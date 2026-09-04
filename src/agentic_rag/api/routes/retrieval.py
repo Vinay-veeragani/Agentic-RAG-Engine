@@ -62,7 +62,7 @@ async def retrieve(
     When `rerank=true`, retrieval fetches `candidate_pool_size` candidates
     (wider than the final result count) and the reranker narrows that down
     to `rerank_top_k` — the "top 20-30 candidates -> reranker -> top 5-10
-    evidence chunks" pipeline from spec §14.
+    evidence chunks" pipeline.
     """
     body.filters.collection_id = body.collection_id
     retrieval_top_k = body.candidate_pool_size if body.rerank else body.top_k

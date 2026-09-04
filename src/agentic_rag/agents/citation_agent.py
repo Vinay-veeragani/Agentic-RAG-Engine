@@ -1,4 +1,4 @@
-"""Citation validation (spec §23) — does a claim's cited evidence actually
+"""Citation validation — does a claim's cited evidence actually
 entail it, not merely relate to it?
 
 A claim with zero citations is trivially unsupported (deterministic

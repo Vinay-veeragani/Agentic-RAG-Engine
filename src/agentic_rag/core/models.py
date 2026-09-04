@@ -40,7 +40,7 @@ class DocumentType(StrEnum):
 
 
 class QueryType(StrEnum):
-    """Query Analyzer output categories — spec §10."""
+    """Query Analyzer output categories."""
 
     SIMPLE_FACTUAL = "simple_factual"
     SUMMARIZATION = "summarization"
@@ -73,7 +73,7 @@ class QueryStatus(StrEnum):
 
 
 class TerminationReason(StrEnum):
-    """Why the agentic retrieval loop (spec §16) stopped iterating. Every
+    """Why the agentic retrieval loop stopped iterating. Every
     run ends in exactly one of these — never a silent/implicit stop."""
 
     SUFFICIENT_EVIDENCE = "sufficient_evidence"
@@ -84,7 +84,7 @@ class TerminationReason(StrEnum):
 
 
 class AnswerStatus(StrEnum):
-    """Outcome of answer synthesis + citation validation (spec §21/§24).
+    """Outcome of answer synthesis + citation validation.
     Distinct from `TerminationReason` (a property of the retrieval loop) —
     an answer can only reach `GROUNDED` after the loop already found
     evidence; `INSUFFICIENT_EVIDENCE` here specifically means synthesis

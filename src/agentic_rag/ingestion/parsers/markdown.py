@@ -13,7 +13,7 @@ _HEADING_TAGS = {f"h{i}" for i in range(1, 7)}
 class MarkdownParser:
     """Structure-aware: walks the CommonMark token stream to recover headings,
     paragraphs, list items, and fenced code blocks, tracking the current
-    heading as context for later elements (spec §5 "preserve headings").
+    heading as context for later elements (preserve headings).
 
     Known limitation: GFM tables are not specially recognized (no table
     plugin is installed) — a markdown table parses as plain paragraph text

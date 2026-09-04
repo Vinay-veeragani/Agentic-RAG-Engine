@@ -113,7 +113,7 @@ async def agentic_retrieve(
     embedding_provider: EmbeddingProviderDep,
     reranker: RerankerDep,
 ) -> AgenticRetrieveResponse:
-    """Runs the full bounded agentic retrieval loop (spec §16) and returns
+    """Runs the full bounded agentic retrieval loop and returns
     its structured trace + final evidence — no synthesized answer (see
     POST /query for that)."""
     trace_id = get_trace_id() or "unbound"
@@ -178,7 +178,7 @@ async def _run_query_pipeline(
     settings: Settings,
     emitter: EventEmitter,
 ) -> QueryResponse:
-    """The full pipeline (spec §29): agentic retrieval loop -> answer
+    """The full pipeline: agentic retrieval loop -> answer
     synthesis -> citation validation -> grounded answer. If the loop ended
     without usable evidence (conflicting or none found), synthesis is
     skipped entirely — there is nothing honest to synthesize from, and
@@ -289,7 +289,7 @@ async def query_stream(
     embedding_provider: EmbeddingProviderDep,
     reranker: RerankerDep,
 ) -> StreamingResponse:
-    """SSE version of POST /query (spec §30): the same pipeline, but each
+    """SSE version of POST /query: the same pipeline, but each
     structured event is pushed to the client as it happens rather than only
     the final response. Reconnection: a client may send `Last-Event-ID`, but
     events aren't replayed from before a reconnect — only this process's
@@ -355,7 +355,7 @@ async def query_stream(
 
 @queries_router.get("/{trace_id}/trace", response_model=TraceResponse)
 async def get_query_trace(trace_id: str) -> TraceResponse:
-    """spec §29's GET /queries/{id}/trace. Process-local, in-memory only
+    """GET /queries/{id}/trace. Process-local, in-memory only
     (see `observability.events.TraceStore`) — not persisted across restarts
     or shared across worker processes; a documented gap, not silently
     approximated."""

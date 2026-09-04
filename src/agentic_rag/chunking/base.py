@@ -1,4 +1,4 @@
-"""Chunking interface, config, and registry (spec §7).
+"""Chunking interface, config, and registry.
 
 `Chunker.chunk()` operates purely on a `ParsedDocument` and returns
 `ChunkCandidate`s — no DB/session dependency, so each strategy is unit
@@ -26,8 +26,8 @@ class ChunkingStrategy(StrEnum):
 
 class ChunkingConfig(BaseModel):
     """Persisted verbatim onto `DocumentVersion.chunking_config` so a given
-    index can always be reproduced later (spec §7: "record chunking
-    configuration ... so experiments can be reproduced")."""
+    index can always be reproduced later ("record chunking configuration
+    ... so experiments can be reproduced")."""
 
     strategy: ChunkingStrategy = ChunkingStrategy.STRUCTURAL
     chunk_size_tokens: int = Field(default=400, gt=0)

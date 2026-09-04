@@ -1,4 +1,4 @@
-"""Answer synthesis (spec §21).
+"""Answer synthesis.
 
 The LLM is never asked to produce a real citation ID — only a small
 1-based index into the evidence list it was shown in the prompt

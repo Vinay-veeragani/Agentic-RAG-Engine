@@ -47,16 +47,16 @@ class Settings(BaseSettings):
     max_tokens_per_query: int = 8000
     max_query_latency_seconds: float = 60.0
 
-    # Ingestion (spec §36: file size limits).
+    # Ingestion (file size limits).
     max_upload_size_bytes: int = 25 * 1024 * 1024
     object_store_root: str = "./data/objects"
 
-    # Frontend dev server origin(s) allowed to call this API (spec §37).
+    # Frontend dev server origin(s) allowed to call this API.
     cors_allow_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:3000"]
     )
 
-    # Phase 13 hardening.
+    # Security/reliability hardening.
     #
     # API-key auth: empty (the default) means auth is disabled — every route
     # stays open, matching every other provider's "mock by default, nothing

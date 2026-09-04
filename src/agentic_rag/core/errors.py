@@ -1,9 +1,9 @@
 """Domain error hierarchy.
 
 Every error the system can surface to a caller is a subclass of `AgenticRAGError`
-and carries a stable `code` matching the failure-mode enum in `core/models.py`
-(spec §35). Routes translate these into HTTP responses without ever leaking raw
-stack traces (see api/dependencies/error_handling.py, added in Phase 1's API wiring).
+and carries a stable `code` matching the failure-mode enum in `core/models.py`.
+Routes translate these into HTTP responses without ever leaking raw
+stack traces (see api/dependencies/error_handling.py).
 
 Never catch-and-swallow one of these into a generic success response — a caller
 must always be able to distinguish "no answer because no evidence" from

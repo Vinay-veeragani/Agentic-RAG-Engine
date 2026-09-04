@@ -15,11 +15,10 @@ class QueryAnalyzeRequest(BaseModel):
 
 class QueryAnalyzeResponse(BaseModel):
     """A preview of query understanding + retrieval planning, ahead of the
-    full agentic retrieval loop (Phase 7) that will actually execute a plan
-    like this. Not one of spec §29's listed endpoints — added because
-    "run it and see the real output" is how every prior phase in this repo
-    was verified, and there is otherwise no way to exercise this phase over
-    HTTP yet."""
+    full agentic retrieval loop that will actually execute a plan like
+    this. Not one of the documented endpoints — added because "run it and
+    see the real output" is how this repo verifies things, and there is
+    otherwise no way to exercise query analysis + planning over HTTP yet."""
 
     query: str
     analysis: QueryAnalysis
@@ -61,8 +60,8 @@ class IterationTraceResponse(BaseModel):
 class AgenticRetrieveResponse(BaseModel):
     """The full agentic retrieval loop's output: plan, one trace entry per
     iteration, why it stopped, and the final evidence — no synthesized
-    answer yet (that's Phase 9's POST /query, spec §29). Structured
-    decisions and telemetry only, never hidden chain-of-thought (spec §16)."""
+    answer yet (that's POST /query). Structured decisions and telemetry
+    only, never hidden chain-of-thought."""
 
     query: str
     trace_id: str
@@ -91,7 +90,7 @@ class CitationResponse(BaseModel):
 
 
 class QueryResponse(BaseModel):
-    """The full pipeline (spec §29 POST /query): query -> plan -> retrieve ->
+    """The full pipeline (POST /query): query -> plan -> retrieve ->
     rerank -> evidence evaluation -> (refine/retry) -> synthesis -> citation
     validation -> grounded answer. `status` is `grounded` only when at least
     one claim survived citation validation; otherwise `answer`/`citations`
@@ -112,9 +111,9 @@ class QueryResponse(BaseModel):
 
 
 class TraceResponse(BaseModel):
-    """spec §29's GET /queries/{id}/trace — the same structured events (spec
-    §30) a live SSE stream would have emitted for this query, replayed from
-    this process's in-memory TraceStore."""
+    """GET /queries/{id}/trace — the same structured events a live SSE
+    stream would have emitted for this query, replayed from this process's
+    in-memory TraceStore."""
 
     trace_id: str
     events: list[Event]

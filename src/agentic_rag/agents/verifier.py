@@ -1,12 +1,12 @@
-"""Groundedness verification (spec §24) — the final assembly step.
+"""Groundedness verification — the final assembly step.
 
 Reconstructs the answer from *only* the claims whose citations passed
 entailment validation, rather than asking an LLM to "edit" its own prior
 answer: since synthesis already produces discrete claims, dropping an
 unsupported one and rejoining the rest is a deterministic operation, and one
 fewer place a bad structured-output response could corrupt the final
-answer. This is spec §24's "if a claim cannot be supported: remove it" —
-implemented literally, not as another prompt.
+answer. This is "if a claim cannot be supported: remove it" — implemented
+literally, not as another prompt.
 """
 
 from __future__ import annotations

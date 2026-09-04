@@ -2,8 +2,8 @@ from pydantic import BaseModel
 
 
 class SettingsResponse(BaseModel):
-    """Non-secret configuration only — never API keys (spec §36: don't leak
-    internals to consumers). Powers the frontend's Settings page."""
+    """Non-secret configuration only — never API keys or other internals
+    that could leak to consumers. Powers the frontend's Settings page."""
 
     app_env: str
     llm_provider: str

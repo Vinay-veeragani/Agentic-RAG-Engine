@@ -1,4 +1,4 @@
-"""Reciprocal Rank Fusion (spec §9) — a pure function over ranked ID lists,
+"""Reciprocal Rank Fusion — a pure function over ranked ID lists,
 with no DB/embedding/retriever dependency, so it's testable in complete
 isolation from everything else in this package.
 """

@@ -22,7 +22,7 @@ async def test_collection_round_trip(db_session) -> None:
 @pytest.mark.asyncio
 async def test_document_chunk_embedding_round_trip(db_session) -> None:
     """Confirms the pgvector column actually stores/returns a vector, not just
-    that the migration created the column (spec §8/§9 dependency)."""
+    that the migration created the column."""
     from agentic_rag.storage.models import Document, DocumentChunk, DocumentVersion
 
     collection = Collection(name=f"col-{uuid.uuid4().hex[:8]}")

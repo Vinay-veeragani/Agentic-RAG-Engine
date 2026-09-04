@@ -1,10 +1,10 @@
 """Parser interface + registry.
 
-`DocumentParser.parse(source) -> ParsedDocument` (spec §5). Each format gets
-its own parser rather than forcing everything through one code path — a PDF's
+`DocumentParser.parse(source) -> ParsedDocument`. Each format gets its own
+parser rather than forcing everything through one code path — a PDF's
 notion of "page" and a CSV's notion of "row" are not the same shape, and
-pretending otherwise is exactly the kind of toy abstraction the spec warns
-against (§42).
+pretending otherwise is exactly the kind of toy abstraction that breaks
+down the moment a real, structurally different format shows up.
 """
 
 from __future__ import annotations
