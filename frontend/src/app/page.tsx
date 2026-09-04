@@ -104,7 +104,7 @@ function QuickLink({
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">{description}</p>
-        <Button size="sm" variant="secondary" render={<Link href={href} />}>
+        <Button size="sm" variant="secondary" nativeButton={false} render={<Link href={href} />}>
           Open
         </Button>
       </CardContent>
