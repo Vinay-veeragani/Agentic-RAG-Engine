@@ -144,6 +144,14 @@ pgvector that the provider abstraction can't hide.
   `source` form field, e.g. `"Annual Report"`) and threaded through every
   retriever into `RetrievedCandidate.document_source`, which source
   authority resolution (see Evidence evaluation below) reads.
+- `Document.document_date` is likewise settable at upload (a `document_date`
+  form field) — the document's real-world date (publication/fiscal
+  period), distinct from `created_at` (upload time). Deliberately
+  caller-supplied rather than auto-extracted: reliably parsing a
+  publication date out of arbitrary prose is a real NLP problem, not
+  something a deterministic parser can do generically across seven
+  formats. `MetadataFilter.year` (see Retrieval below) prefers this field
+  when set.
 
 HTML/PDF/DOCX heading and table detection are heuristic/best-effort (font
 size for PDF headings, tag/style name for HTML/DOCX) — there is no
@@ -232,7 +240,13 @@ abbreviations ("e.g.", "Dr.") the way most lightweight splitters do.
   a fixed field list (collection, document type, document IDs, section,
   heading, source, year) rather than an open-ended key/value language —
   "arbitrary safe metadata filters" is satisfied by that closed field
-  list, not by sanitizing arbitrary filter expressions.
+  list, not by sanitizing arbitrary filter expressions. `year` filters on
+  `Document.document_date` (a caller-supplied real-world date, set at
+  upload time — see Document ingestion) when one was provided, falling
+  back to `created_at` (upload time) only when it wasn't. An earlier
+  version of this filter used `created_at` unconditionally, which an
+  engineering audit correctly flagged as silently wrong for anything but
+  a freshly-published document — fixed, not just documented as a gap.
 - `retrieval/fusion.py` — `reciprocal_rank_fusion()`: a pure function over
   ranked ID lists with zero DB/embedding dependency, so fusion is
   independently testable with unit tests that never touch a database. RRF

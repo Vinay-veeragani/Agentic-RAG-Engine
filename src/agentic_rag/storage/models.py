@@ -18,7 +18,7 @@ is documented in docs/embeddings... (added when the embeddings phase lands).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import JSON, Computed, ForeignKey, Index, UniqueConstraint, func
@@ -76,6 +76,14 @@ class Document(Base):
     doc_metadata: Mapped[dict[str, object]] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     ingested_at: Mapped[datetime | None]
+    # The document's real-world date (publication/fiscal period), distinct
+    # from created_at (upload time) — caller-supplied at upload time since
+    # reliably extracting this from arbitrary prose is a real NLP problem,
+    # not something a deterministic parser can do generically. MetadataFilter
+    # .year (retrieval/filters.py) prefers this when set, falling back to
+    # created_at's year only when it isn't — found missing entirely during
+    # an engineering audit ("temporal" filtering was silently upload-date-only).
+    document_date: Mapped[date | None]
 
     collection: Mapped[Collection] = relationship(back_populates="documents")
     versions: Mapped[list[DocumentVersion]] = relationship(back_populates="document")

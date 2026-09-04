@@ -28,7 +28,8 @@ class MetadataFilter(BaseModel):
     section: str | None = None
     heading: str | None = None
     source: str | None = None
-    year: int | None = None  # filters on Document.created_at's year
+    year: int | None = None  # Document.document_date's year, falling back
+    # to created_at (upload time) only for documents with no real date set.
 
 
 @dataclass(slots=True)

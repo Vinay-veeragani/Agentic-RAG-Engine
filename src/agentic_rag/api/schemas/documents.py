@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -11,6 +11,7 @@ class DocumentResponse(BaseModel):
     collection_id: uuid.UUID
     title: str | None
     source: str | None
+    document_date: date | None
     filename: str
     document_type: str
     checksum: str

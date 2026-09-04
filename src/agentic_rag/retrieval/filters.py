@@ -6,7 +6,7 @@ similarity search).
 
 from __future__ import annotations
 
-from sqlalchemy import ColumnElement, extract, select
+from sqlalchemy import ColumnElement, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentic_rag.retrieval.base import MetadataFilter, RetrievedCandidate
@@ -32,7 +32,16 @@ def build_filter_conditions(filters: MetadataFilter | None) -> list[ColumnElemen
     if filters.source is not None:
         conditions.append(Document.source == filters.source)
     if filters.year is not None:
-        conditions.append(extract("year", Document.created_at) == filters.year)
+        # Prefer the document's real-world date when the caller supplied one
+        # at upload time (Document.document_date); created_at is upload
+        # time, not document content, and is only a fallback proxy for
+        # documents where no real date was ever provided.
+        conditions.append(
+            extract(
+                "year", func.coalesce(Document.document_date, Document.created_at)
+            )
+            == filters.year
+        )
     return conditions
 
 

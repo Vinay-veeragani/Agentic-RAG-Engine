@@ -1,5 +1,6 @@
 import uuid
 from collections import Counter
+from datetime import date
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
@@ -38,6 +39,15 @@ async def upload_document(
     source: str | None = Form(
         None, description="e.g. 'Annual Report', 'Press Release' — used for source authority."
     ),
+    document_date: date | None = Form(
+        None,
+        description=(
+            "The document's real-world date (publication/fiscal period), "
+            "not the upload date — used by MetadataFilter.year. Left unset, "
+            "year filtering falls back to upload time, which is rarely what "
+            "you want for anything but a freshly-published document."
+        ),
+    ),
 ) -> DocumentIngestResponse:
     content = await file.read()
     result = await ingest_document(
@@ -48,6 +58,7 @@ async def upload_document(
         content=content,
         source=source,
         title=title,
+        document_date=document_date,
         max_upload_size_bytes=get_settings().max_upload_size_bytes,
     )
     await db.commit()

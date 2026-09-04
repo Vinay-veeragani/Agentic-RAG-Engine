@@ -25,6 +25,7 @@ export default function DocumentsPage() {
   const [collectionId, setCollectionId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [source, setSource] = useState("");
+  const [documentDate, setDocumentDate] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [indexResults, setIndexResults] = useState<Record<string, DocumentIndexResponse>>({});
 
@@ -39,12 +40,14 @@ export default function DocumentsPage() {
       return api.documents.upload(collectionId, file, {
         title: title || undefined,
         source: source || undefined,
+        documentDate: documentDate || undefined,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
       setTitle("");
       setSource("");
+      setDocumentDate("");
       setFile(null);
     },
   });
@@ -74,7 +77,7 @@ export default function DocumentsPage() {
           <CardTitle className="text-base">Upload document</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div className="space-y-1.5">
               <Label htmlFor="title">Title (optional)</Label>
               <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -87,6 +90,18 @@ export default function DocumentsPage() {
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="document-date">Document date (optional)</Label>
+              <Input
+                id="document-date"
+                type="date"
+                value={documentDate}
+                onChange={(e) => setDocumentDate(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                The document&apos;s real date, not today&apos;s upload date.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="file">File</Label>
@@ -127,6 +142,7 @@ export default function DocumentsPage() {
                 <TableRow>
                   <TableHead>Title</TableHead>
                   <TableHead>Source</TableHead>
+                  <TableHead>Date</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Ingest</TableHead>
                 </TableRow>
@@ -138,6 +154,9 @@ export default function DocumentsPage() {
                     <TableRow key={doc.id}>
                       <TableCell className="font-medium">{doc.title ?? doc.filename}</TableCell>
                       <TableCell className="text-muted-foreground">{doc.source ?? "—"}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {doc.document_date ?? "—"}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline">{doc.document_type}</Badge>
                       </TableCell>
@@ -147,7 +166,7 @@ export default function DocumentsPage() {
                             size="sm"
                             variant="secondary"
                             onClick={() => ingest.mutate(doc.id)}
-                            disabled={ingest.isPending}
+                            disabled={ingest.isPending && ingest.variables === doc.id}
                           >
                             {ingest.isPending && ingest.variables === doc.id
                               ? "Ingesting…"
@@ -165,7 +184,7 @@ export default function DocumentsPage() {
                 })}
                 {documents?.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
                       No documents in this scope yet.
                     </TableCell>
                   </TableRow>

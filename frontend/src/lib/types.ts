@@ -17,6 +17,7 @@ export interface DocumentSummary {
   collection_id: string;
   title: string | null;
   source: string | null;
+  document_date: string | null;
   filename: string;
   document_type: string;
   checksum: string;

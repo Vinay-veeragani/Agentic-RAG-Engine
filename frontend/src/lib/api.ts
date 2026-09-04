@@ -80,13 +80,14 @@ export const api = {
     upload: async (
       collectionId: string,
       file: File,
-      opts?: { title?: string; source?: string },
+      opts?: { title?: string; source?: string; documentDate?: string },
     ): Promise<DocumentIngestResponse> => {
       const form = new FormData();
       form.append("collection_id", collectionId);
       form.append("file", file);
       if (opts?.title) form.append("title", opts.title);
       if (opts?.source) form.append("source", opts.source);
+      if (opts?.documentDate) form.append("document_date", opts.documentDate);
       const response = await fetch(`${API_URL}/documents`, { method: "POST", body: form });
       if (!response.ok) {
         const body = await response.json().catch(() => null);

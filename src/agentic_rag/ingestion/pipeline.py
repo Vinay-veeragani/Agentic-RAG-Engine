@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +38,7 @@ async def ingest_document(
     content: bytes,
     title: str | None,
     source: str | None = None,
+    document_date: date | None = None,
     max_upload_size_bytes: int,
 ) -> IngestResult:
     safe_name = validate_upload(filename, content, max_size_bytes=max_upload_size_bytes)
@@ -55,6 +57,7 @@ async def ingest_document(
             collection_id=collection_id,
             title=title or parsed.title,
             source=source,
+            document_date=document_date,
             filename=safe_name,
             document_type=document_type.value,
             checksum=checksum,
@@ -74,6 +77,8 @@ async def ingest_document(
             document.title = title
         if source:
             document.source = source
+        if document_date:
+            document.document_date = document_date
 
     storage_key = f"{document.id}/v{next_version_number}/{safe_name}"
     storage_path = await object_store.save(storage_key, content)
