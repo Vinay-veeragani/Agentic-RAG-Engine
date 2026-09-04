@@ -949,9 +949,15 @@ honest tradeoffs they are, not gaps to apologize for.
 - **Regex-based prompt-injection detection, not semantic.** Bounded and
   deterministic, consistent with how contradiction detection is scoped,
   but a rephrased injection attempt that doesn't match a listed pattern
-  won't be caught. A semantic/model-based detector is the natural next
-  step if adversarial content becomes a real concern in a given
-  deployment.
+  won't be caught. `tests/adversarial/test_prompt_injection.py` documents
+  this honestly with `xfail(strict=True)` cases (a reworded instruction,
+  a non-English translation) that currently do bypass detection — proof
+  of the gap's real boundary, not just a docstring claim. Patterns cover
+  instruction-override, system-prompt probing, jailbreak phrasing,
+  refusal-injection ("do not answer..."), and exfiltration-style
+  ("send/forward this data...") attempts. A semantic/model-based detector
+  is the natural next step if adversarial content becomes a real concern
+  in a given deployment.
 - **Deterministic, keyword-scoped contradiction detection.** Only numeric
   claims sharing one of a small fixed keyword set, framed as a
   percentage, are checked. This trades recall (it misses non-numeric or

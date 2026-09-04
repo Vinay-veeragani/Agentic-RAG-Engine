@@ -40,6 +40,22 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         "instruction_delimiter_injection",
         re.compile(r"(<\|?(system|im_start|im_end)\|?>)", re.I),
     ),
+    (
+        "refusal_injection",
+        re.compile(
+            r"\b(do\s+not|don'?t|never|refuse\s+to)\s+(answer|respond(\s+to)?)\s+"
+            r"(the\s+|this\s+|that\s+|user'?s?\s+)*(question|query|request)\b",
+            re.I,
+        ),
+    ),
+    (
+        "exfiltration",
+        re.compile(
+            r"\b(send|email|forward|post|upload|transmit)\s+(this|the|all|any)\s+"
+            r"(information|data|content|details|conversation)\b",
+            re.I,
+        ),
+    ),
 )
 
 
