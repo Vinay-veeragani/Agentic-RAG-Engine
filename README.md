@@ -103,7 +103,9 @@ alembic upgrade head
 uvicorn agentic_rag.api.main:app --reload
 ```
 
-Run tests: `pytest` · Lint: `ruff check src tests` · Type-check: `mypy src`
+Run tests: `pytest` (add `-m slow` to also run the real cross-encoder
+reranker test, which downloads/loads a model on first use) · Lint:
+`ruff check src tests` · Type-check: `mypy src`
 
 A Docker Compose stack (`docker/docker-compose.yml`) is maintained for CI and
 for environments that can run Docker, but is not exercised in local

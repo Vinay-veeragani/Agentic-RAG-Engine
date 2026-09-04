@@ -14,7 +14,11 @@ from typing import Any, Protocol
 
 from agentic_rag.core.config import ProviderName
 from agentic_rag.core.errors import ModelProviderError
+from agentic_rag.observability.metrics import RERANK_FAILURES
+from agentic_rag.observability.tracing import get_logger
 from agentic_rag.retrieval.base import RetrievedCandidate
+
+logger = get_logger(__name__)
 
 DEFAULT_LOCAL_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
@@ -82,6 +86,25 @@ class LocalCrossEncoderReranker:
         model = self._get_model()
         pairs = [(query, c.content) for c in candidates]
         return model.predict(pairs)
+
+
+async def rerank_with_fallback(
+    reranker: Reranker, query: str, candidates: list[RetrievedCandidate], *, top_k: int
+) -> list[RetrievedCandidate]:
+    """Runs `reranker.rerank`, but never lets a reranker failure (e.g. a
+    model that fails to load or errors mid-inference) fail the whole query.
+    Falls back to the input order — already fusion/retrieval-scored —
+    truncated to `top_k`, with `rerank_score` left unset so callers can tell
+    reranking didn't actually run.
+    """
+    try:
+        return await reranker.rerank(query, candidates, top_k=top_k)
+    except Exception:
+        logger.warning(
+            "reranker.failed", reranker=type(reranker).__name__, exc_info=True
+        )
+        RERANK_FAILURES.inc()
+        return candidates[:top_k]
 
 
 def get_reranker(provider: ProviderName) -> Reranker:

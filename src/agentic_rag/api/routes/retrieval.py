@@ -15,6 +15,7 @@ from agentic_rag.core.models import RetrievalStrategy
 from agentic_rag.retrieval.base import RetrievedCandidate
 from agentic_rag.retrieval.dense import DenseRetriever
 from agentic_rag.retrieval.hybrid import HybridRetriever
+from agentic_rag.retrieval.reranking import rerank_with_fallback
 from agentic_rag.retrieval.sparse import SparseRetriever
 
 router = APIRouter(tags=["retrieval"])
@@ -88,7 +89,9 @@ async def retrieve(
         )
 
     if body.rerank:
-        results = await reranker.rerank(body.query, results, top_k=body.rerank_top_k)
+        results = await rerank_with_fallback(
+            reranker, body.query, results, top_k=body.rerank_top_k
+        )
         for rank, result in enumerate(results, start=1):
             result.rank = rank  # reranking reorders, so the prior rank is stale
 

@@ -42,6 +42,10 @@ dev = [
 # them actually lands, per "do not add dependencies unless they solve a concrete requirement."
 
 [tool.pytest.ini_options]
+markers = [
+    "slow: downloads/loads a real ML model (e.g. the cross-encoder reranker) on first run; excluded by default, run explicitly with `pytest -m slow`.",
+]
+addopts = "-m 'not slow'"
 asyncio_mode = "auto"
 # Session-scoped loop: storage/postgres.py and storage/cache.py cache the
 # engine/session-factory/redis-client at module (process) level, matching how

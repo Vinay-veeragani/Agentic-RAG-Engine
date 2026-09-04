@@ -23,7 +23,7 @@ from agentic_rag.retrieval.base import RetrievedCandidate
 from agentic_rag.retrieval.dense import DenseRetriever
 from agentic_rag.retrieval.fusion import reciprocal_rank_fusion
 from agentic_rag.retrieval.hybrid import HybridRetriever
-from agentic_rag.retrieval.reranking import Reranker
+from agentic_rag.retrieval.reranking import Reranker, rerank_with_fallback
 from agentic_rag.retrieval.sparse import SparseRetriever
 
 DEFAULT_EVIDENCE_TOP_K = 8
@@ -80,7 +80,9 @@ class RetrievalAgent:
             emitter.emit(EventType.RERANKING_STARTED, candidate_count=len(merged))
 
         rerank_start = time.perf_counter()
-        reranked = await self._reranker.rerank(queries[0], merged, top_k=evidence_top_k)
+        reranked = await rerank_with_fallback(
+            self._reranker, queries[0], merged, top_k=evidence_top_k
+        )
         for rank, candidate in enumerate(reranked, start=1):
             candidate.rank = rank
         rerank_latency = time.perf_counter() - rerank_start

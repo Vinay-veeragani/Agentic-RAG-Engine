@@ -33,6 +33,11 @@ ESTIMATED_TOKENS = Histogram("agentic_rag_estimated_tokens", "Estimated tokens p
 CACHE_HITS = Counter("agentic_rag_cache_hits_total", "Cache hits", ["cache"])
 CACHE_MISSES = Counter("agentic_rag_cache_misses_total", "Cache misses", ["cache"])
 QUERY_FAILURES = Counter("agentic_rag_query_failures_total", "Query failures", ["reason"])
+RERANK_FAILURES = Counter(
+    "agentic_rag_rerank_failures_total",
+    "Reranker errors (e.g. model load/inference failure) that fell back to "
+    "unreranked, fusion-ordered results",
+)
 PROMPT_INJECTION_FLAGGED = Counter(
     "agentic_rag_prompt_injection_flagged_total",
     "Retrieved chunks excluded from a synthesis prompt due to a matched "

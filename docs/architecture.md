@@ -265,11 +265,20 @@ not by the retrievers themselves.
   term-overlap, no model or network) and `LocalCrossEncoderReranker`
   (sentence-transformers `CrossEncoder`,
   `cross-encoder/ms-marco-MiniLM-L-6-v2`, CPU, no API key) sit behind it.
-  Verified with a real (non-mocked) model download and inference call:
-  for the query "What happened to revenue?" the cross-encoder scored a
-  revenue passage at ~-0.001 and an unrelated weather passage at ~-11.2 —
-  a large, correctly-ordered separation from a genuine semantic signal,
-  not just plumbing that runs without error.
+  Every other reranking test exercises `MockReranker` only, so
+  `tests/unit/test_reranking.py::test_local_cross_encoder_reranker_ranks_relevant_content_first`
+  runs the real model against a genuinely relevant vs. irrelevant pair and
+  asserts the correct ordering — real, automated proof reranking helps,
+  not just that it runs without error. It's marked `slow` (downloads/loads
+  a real model) and excluded from the default `pytest` run; run it with
+  `pytest -m slow`.
+- `retrieval/reranking.py`'s `rerank_with_fallback()` wraps every call to
+  `reranker.rerank()` (both `POST /retrieve` and the agentic loop's
+  `RetrievalAgent`): if the reranker raises — a model that fails to load,
+  or errors mid-inference — the query still succeeds, falling back to the
+  input order (already fusion/retrieval-scored) truncated to `top_k`,
+  logged and counted via `agentic_rag_rerank_failures_total` rather than
+  failing the whole request over a non-critical enhancement step.
 - `POST /retrieve` accepts `rerank`/`rerank_top_k` fields. When
   `rerank=true`, retrieval first fetches `candidate_pool_size` candidates
   (top 20-30) and the reranker narrows that down to `rerank_top_k` (top
