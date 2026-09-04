@@ -1,7 +1,8 @@
 {
-  "generated_at": "2026-09-03T12:04:09.067531+00:00",
+  "generated_at": "2026-09-04T09:35:57.354542+00:00",
   "embedding_provider": "local",
   "llm_provider": "mock",
+  "reranker_provider": "mock",
   "cases": [
     {
       "query": "What was the total revenue in fiscal year 2024?",
@@ -9,7 +10,7 @@
       "relevant_document_count": 1,
       "baseline": {
         "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
-        "latency_seconds": 0.04085699992720038,
+        "latency_seconds": 0.04835969989653677,
         "estimated_tokens": 57,
         "retrieval": {
           "recall": 1.0,
@@ -25,7 +26,7 @@
       },
       "agentic": {
         "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
-        "latency_seconds": 0.04742000007536262,
+        "latency_seconds": 0.06883100001141429,
         "estimated_tokens": 57,
         "retrieval": {
           "recall": 1.0,
@@ -51,7 +52,7 @@
       "relevant_document_count": 1,
       "baseline": {
         "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
-        "latency_seconds": 0.07290479994844645,
+        "latency_seconds": 0.041283999918960035,
         "estimated_tokens": 57,
         "retrieval": {
           "recall": 1.0,
@@ -67,7 +68,7 @@
       },
       "agentic": {
         "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
-        "latency_seconds": 0.048726500011980534,
+        "latency_seconds": 0.053475999971851707,
         "estimated_tokens": 57,
         "retrieval": {
           "recall": 1.0,
@@ -93,7 +94,7 @@
       "relevant_document_count": 2,
       "baseline": {
         "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
-        "latency_seconds": 0.02556509990245104,
+        "latency_seconds": 0.04516780003905296,
         "estimated_tokens": 57,
         "retrieval": {
           "recall": 1.0,
@@ -109,7 +110,7 @@
       },
       "agentic": {
         "answer": "The company faces risks including increased competition, foreign currency fluctuation, and supply chain disruption. Regulatory changes in key markets could adversely affect operations and future reven",
-        "latency_seconds": 0.030635599978268147,
+        "latency_seconds": 0.06486279994715005,
         "estimated_tokens": 51,
         "retrieval": {
           "recall": 1.0,
@@ -135,7 +136,7 @@
       "relevant_document_count": 1,
       "baseline": {
         "answer": "Research and development spending in 2024 totaled $30 million, a 20 percent increase from $25 million in 2023, reflecting continued investment in product innovation.",
-        "latency_seconds": 0.03387109993491322,
+        "latency_seconds": 0.09481959999538958,
         "estimated_tokens": 47,
         "retrieval": {
           "recall": 1.0,
@@ -151,7 +152,7 @@
       },
       "agentic": {
         "answer": "Research and development spending in 2024 totaled $30 million, a 20 percent increase from $25 million in 2023, reflecting continued investment in product innovation.",
-        "latency_seconds": 0.032920700032263994,
+        "latency_seconds": 0.04617239988874644,
         "estimated_tokens": 47,
         "retrieval": {
           "recall": 1.0,
@@ -177,7 +178,7 @@
       "relevant_document_count": 1,
       "baseline": {
         "answer": "The company faces risks including increased competition, foreign currency fluctuation, and supply chain disruption. Regulatory changes in key markets could adversely affect operations and future reven",
-        "latency_seconds": 0.03023200004827231,
+        "latency_seconds": 0.10546959994826466,
         "estimated_tokens": 51,
         "retrieval": {
           "recall": 1.0,
@@ -193,7 +194,7 @@
       },
       "agentic": {
         "answer": "The company faces risks including increased competition, foreign currency fluctuation, and supply chain disruption. Regulatory changes in key markets could adversely affect operations and future reven",
-        "latency_seconds": 0.10726660001091659,
+        "latency_seconds": 0.12654159998055547,
         "estimated_tokens": 51,
         "retrieval": {
           "recall": 1.0,
@@ -219,7 +220,7 @@
       "relevant_document_count": 2,
       "baseline": {
         "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
-        "latency_seconds": 0.03048560000024736,
+        "latency_seconds": 0.0408805999904871,
         "estimated_tokens": 57,
         "retrieval": {
           "recall": 1.0,
@@ -235,7 +236,7 @@
       },
       "agentic": {
         "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
-        "latency_seconds": 0.04454879998229444,
+        "latency_seconds": 0.0465328999562189,
         "estimated_tokens": 57,
         "retrieval": {
           "recall": 1.0,
@@ -261,7 +262,7 @@
       "relevant_document_count": 0,
       "baseline": {
         "answer": "Quarterly revenue for Q3 2024 declined 9 percent due to weaker demand.",
-        "latency_seconds": 0.04069570009596646,
+        "latency_seconds": 0.042265300056897104,
         "estimated_tokens": 23,
         "retrieval": {
           "recall": 0.0,
@@ -277,7 +278,7 @@
       },
       "agentic": {
         "answer": "In fiscal year 2023, the company reported total revenue of $120 million, representing an 8 percent increase over the prior year. Operating margin was 22 percent for the year.",
-        "latency_seconds": 0.11416200001258403,
+        "latency_seconds": 0.11482250003609806,
         "estimated_tokens": 57,
         "retrieval": {
           "recall": 0.0,
@@ -302,9 +303,9 @@
       "category": "unanswerable",
       "relevant_document_count": 0,
       "baseline": {
-        "answer": "The company expanded employee health benefits, adding paid parental leave and a wellness program subsidy for all full-time staff.",
-        "latency_seconds": 0.03556400001980364,
-        "estimated_tokens": 37,
+        "answer": "Before joining, Morgan Reyes worked at a supply chain analytics company as an operations executive.",
+        "latency_seconds": 0.03720480005722493,
+        "estimated_tokens": 29,
         "retrieval": {
           "recall": 0.0,
           "precision": 0.0,
@@ -312,14 +313,14 @@
           "ndcg": 0.0,
           "hit_rate": 0.0
         },
-        "answer_relevance": 0.2,
+        "answer_relevance": 0.0,
         "status": null,
         "iterations": null,
         "citation_metrics": null
       },
       "agentic": {
         "answer": null,
-        "latency_seconds": 0.22716530004981905,
+        "latency_seconds": 0.19489089993294328,
         "estimated_tokens": 0,
         "retrieval": {
           "recall": 0.0,
@@ -340,7 +341,7 @@
       "relevant_document_count": 2,
       "baseline": {
         "answer": "Quarterly revenue for Q3 2024 declined 4 percent due to weaker demand.",
-        "latency_seconds": 0.06054150010459125,
+        "latency_seconds": 0.03628420003224164,
         "estimated_tokens": 23,
         "retrieval": {
           "recall": 1.0,
@@ -356,7 +357,7 @@
       },
       "agentic": {
         "answer": null,
-        "latency_seconds": 0.1537139000138268,
+        "latency_seconds": 0.038375600008293986,
         "estimated_tokens": 0,
         "retrieval": {
           "recall": 1.0,
@@ -370,33 +371,75 @@
         "iterations": 1,
         "citation_metrics": null
       }
+    },
+    {
+      "query": "Who was the CFO during fiscal year 2024, and what did they do before that?",
+      "category": "multi_hop",
+      "relevant_document_count": 2,
+      "baseline": {
+        "answer": "Morgan Reyes was the CFO during fiscal year 2024, overseeing financial results.",
+        "latency_seconds": 0.03304260002914816,
+        "estimated_tokens": 23,
+        "retrieval": {
+          "recall": 0.5,
+          "precision": 0.2,
+          "mrr": 1.0,
+          "ndcg": 0.6131471927654584,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.5,
+        "status": null,
+        "iterations": null,
+        "citation_metrics": null
+      },
+      "agentic": {
+        "answer": "Morgan Reyes was the CFO during fiscal year 2024, overseeing financial results.",
+        "latency_seconds": 0.06753609993029386,
+        "estimated_tokens": 23,
+        "retrieval": {
+          "recall": 1.0,
+          "precision": 0.4,
+          "mrr": 1.0,
+          "ndcg": 0.8772153153380493,
+          "hit_rate": 1.0
+        },
+        "answer_relevance": 0.5,
+        "status": "grounded",
+        "iterations": 1,
+        "citation_metrics": {
+          "claims_total": 1,
+          "claims_supported": 1,
+          "citations_total": 1,
+          "citations_entailed": 1
+        }
+      }
     }
   ],
   "baseline_summary": {
-    "mean_recall": 1.0,
-    "mean_precision": 0.2857142857142857,
-    "mean_mrr": 0.9285714285714286,
-    "mean_ndcg": 0.9472756790816368,
+    "mean_recall": 0.9375,
+    "mean_precision": 0.275,
+    "mean_mrr": 0.9375,
+    "mean_ndcg": 0.9055096182921145,
     "mean_hit_rate": 1.0,
-    "mean_latency_seconds": 0.04119075555354357,
-    "mean_estimated_tokens": 45.44444444444444,
-    "mean_answer_relevance": 0.3225468975468975,
+    "mean_latency_seconds": 0.052477819996420295,
+    "mean_estimated_tokens": 42.4,
+    "mean_answer_relevance": 0.3202922077922078,
     "citation_metrics": null
   },
   "agentic_summary": {
     "mean_recall": 1.0,
-    "mean_precision": 0.2857142857142857,
-    "mean_mrr": 0.8571428571428571,
-    "mean_ndcg": 0.9034794510269613,
+    "mean_precision": 0.3,
+    "mean_mrr": 0.875,
+    "mean_ndcg": 0.9001964340658473,
     "mean_hit_rate": 1.0,
-    "mean_latency_seconds": 0.0896177111297018,
-    "mean_estimated_tokens": 41.888888888888886,
-    "mean_answer_relevance": 0.333400974025974,
+    "mean_latency_seconds": 0.08220417996635661,
+    "mean_estimated_tokens": 40.0,
+    "mean_answer_relevance": 0.3519119769119769,
     "citation_metrics": {
       "mean_precision": 1.0,
       "mean_completeness": 1.0,
-      "cases_with_citations": 7,
-      "total_cases": 9
+      "cases_with_citations": 8,
+      "total_cases": 10
     }
   }
 }

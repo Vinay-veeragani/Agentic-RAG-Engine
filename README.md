@@ -114,11 +114,11 @@ day-to-day development on this machine — see `docs/architecture.md` for why.
 ## Baseline vs. agentic RAG
 
 Run it yourself: `python benchmarks/run_evaluation.py --embedding local --llm mock`
-(defaults shown). This rebuilds a small 15-document synthetic corpus fresh
-from the real ingestion pipeline, runs both pipelines over 9 cases spanning
+(defaults shown). This rebuilds a small 16-document synthetic corpus fresh
+from the real ingestion pipeline, runs both pipelines over 10 cases spanning
 simple factual, comparison, temporal, analytical, aggregation, ambiguous,
-unanswerable, and contradictory-evidence questions, and writes a full JSON
-report to
+unanswerable, contradictory-evidence, and multi-hop questions, and writes a
+full JSON report to
 `benchmarks/results/latest.json` (committed, from a real run — nothing
 below is a fabricated number).
 
@@ -127,28 +127,38 @@ retrieval, no reranking, no evidence judgment, no citations.
 **Agentic**: Query → Analyze → Plan → Hybrid Retrieval → Rerank → Evidence
 Judge → Refine if necessary → Synthesize → Citation Validate.
 
-Captured `2026-09-03`, local sentence-transformers embeddings + mock LLM:
+Captured `2026-09-04`, local sentence-transformers embeddings + mock LLM:
 
 | Metric | Baseline | Agentic |
 |---|---|---|
-| Recall@5 (excl. ambiguous/unanswerable) | 1.000 | 1.000 |
-| Precision@5 | 0.286 | 0.286 |
-| MRR | 0.929 | 0.857 |
-| NDCG@5 | 0.947 | 0.903 |
+| Recall@5 (excl. ambiguous/unanswerable) | 0.938 | 1.000 |
+| Precision@5 | 0.275 | 0.300 |
+| MRR | 0.938 | 0.875 |
+| NDCG@5 | 0.906 | 0.900 |
 | Hit Rate@5 | 1.000 | 1.000 |
-| Mean latency | 0.041s | 0.090s |
+| Mean latency | 0.052s | 0.082s |
 | Citation precision / completeness | n/a (no citations) | 1.000 / 1.000 |
 
-Retrieval scores are close between the two on this small corpus — both
-search the same index, and the corpus isn't hard enough for reranking/
-expansion/decomposition to move the needle much. **The real difference is
-behavioral, not the retrieval numbers**: on the "unanswerable" case (no
-relevant document exists at all), the agentic pipeline returns
-`insufficient_evidence` instead of guessing; on the "contradictory_evidence"
-case (two sources reporting different numbers, no way to prefer one), it
-returns `conflicting_evidence` and surfaces the specific conflicting claims.
-The baseline pipeline has no such option — it always emits *an* answer, with
-no signal to the caller about whether the evidence actually supported it.
+Most cases score similarly between the two — both search the same index,
+and the corpus isn't hard enough for reranking/expansion to move the
+needle much on a single-hop question. **Recall diverges on the multi-hop
+case specifically**: "Who was the CFO during fiscal year 2024, and what
+did they do before that?" needs two documents — one naming the CFO, a
+second describing their prior role, findable only by that name, which
+the question itself never uses. The baseline (single dense retrieval
+pass) finds only the first document (recall 0.5); the agentic pipeline's
+dependency-chained retrieval extracts the name from the first hop's
+evidence and resolves the second hop's search against it, finding both
+(recall 1.0) — a real, measured difference, not just a qualitative claim.
+
+The rest of the difference is behavioral, not a retrieval score: on the
+"unanswerable" case (no relevant document exists at all), the agentic
+pipeline returns `insufficient_evidence` instead of guessing; on the
+"contradictory_evidence" case (two sources reporting different numbers,
+no way to prefer one), it returns `conflicting_evidence` and surfaces the
+specific conflicting claims. The baseline pipeline has no such option —
+it always emits *an* answer, with no signal to the caller about whether
+the evidence actually supported it.
 
 Generation-quality numbers from this specific run (`answer_relevance`, and
 implicitly `mean_estimated_tokens`) are **not** a real quality signal —

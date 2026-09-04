@@ -438,13 +438,27 @@ loop against real Postgres before writing any test:
    retrieving.
 
 Query decomposition treats subqueries as independent parallel retrievals,
-not a dependency graph — a case like "identify acquisitions → identify
-target companies → retrieve acquisition values → ...", where each step's
-output feeds the next step's query, is not implemented; genuinely
-dependency-aware multi-hop chaining is out of scope for this system (that
-belongs to a full Deep Research–style system, a different project). The
-loop always reranks (no way to skip it) and evidence count is a fixed
-default (8) rather than plan-configurable.
+not a dependency graph — genuinely useful for a query like "what are the
+revenue and profit figures", where both halves are directly searchable,
+but not for a query where the second step's evidence is only findable via
+an entity the *first* step's evidence reveals (a real multi-hop shape,
+e.g. "who is the CEO, and where did they work before"). `agents/multi_hop
+.py` closes exactly that gap for a two-hop chain: when the query
+classifies as multi-hop and decomposition yields at least two subqueries,
+`AgenticRetrievalLoop._retrieve_chained()` runs hop one, has an LLM
+extract the single bridging entity from hop one's evidence, deterministically
+folds that entity into hop two's query text, then runs hop two against the
+*resolved* query — not run independently and merged by ranking, which
+cannot find evidence keyed by a name the original query never used.
+Proven with a real, deliberately adversarial test
+(`tests/integration/test_multi_hop.py`): a control case shows the naive,
+unchained search for hop two's literal text is provably unable to find the
+answer (Postgres full-text search on an empty, all-stopword tsquery
+matches nothing), while the chained path does find it. A genuinely longer
+dependency chain (three or more hops) is still out of scope — that belongs
+to a full Deep Research–style system, a different project. The loop
+always reranks (no way to skip it) and evidence count is a fixed default
+(8) rather than plan-configurable.
 
 ## Evidence evaluation & contradiction detection
 
@@ -625,15 +639,19 @@ appears twice, with two different numbers).
 
 ## Evaluation framework
 
-- `evaluation/datasets.py` — a small, self-contained benchmark corpus (15
-  synthetic documents: 7 finance-related plus 8 topic-distinct
-  distractors) and 9 cases covering simple factual (x2), multi-hop via
-  comparison, comparison, temporal, analytical, aggregation, ambiguous,
-  unanswerable, and contradictory-evidence categories.
-  `build_benchmark_corpus()` ingests + indexes this corpus fresh through
-  the *real* pipeline and resolves each case's ground-truth relevant
-  documents from the real `Document.id` values that ingestion just
-  created — nothing here is a hardcoded chunk ID.
+- `evaluation/datasets.py` — a small, self-contained benchmark corpus (16
+  synthetic documents: 9 finance-related plus 8 topic-distinct
+  distractors, plus a genuine two-hop pair) and 10 cases covering simple
+  factual (x2), comparison, temporal, analytical, aggregation, ambiguous,
+  unanswerable, contradictory-evidence, and a real multi-hop case (`cfo_2024
+  .txt` answers "who", `cfo_prior_role.txt` answers "what did they do
+  before" — but only by name, which a plain independent-subquery search
+  can't find at all; see Query understanding & planning below for why
+  this specifically requires the dependency-chained retrieval path, not
+  just decomposition). `build_benchmark_corpus()` ingests + indexes this
+  corpus fresh through the *real* pipeline and resolves each case's
+  ground-truth relevant documents from the real `Document.id` values that
+  ingestion just created — nothing here is a hardcoded chunk ID.
 - `evaluation/retrieval.py` — Recall@K/Precision@K/MRR/NDCG/Hit Rate as
   pure functions, unit-tested against hand-computed expected values.
 - `evaluation/baseline.py` — a literal baseline pipeline: Query → Dense
@@ -675,27 +693,34 @@ appears twice, with two different numbers).
   with reranking, not a reranker bug, and a good target for follow-up
   work rather than a claim to paper over.
 
-### Real benchmark results (captured 2026-09-03, `--embedding local --llm mock`)
+### Real benchmark results (captured 2026-09-04, `--embedding local --llm mock`)
 
 | Metric | Baseline | Agentic |
 |---|---|---|
-| Recall@5 (excl. ambiguous/unanswerable) | 1.000 | 1.000 |
-| Precision@5 | 0.286 | 0.286 |
-| MRR | 0.929 | 0.857 |
-| NDCG@5 | 0.947 | 0.903 |
+| Recall@5 (excl. ambiguous/unanswerable) | 0.938 | 1.000 |
+| Precision@5 | 0.275 | 0.300 |
+| MRR | 0.938 | 0.875 |
+| NDCG@5 | 0.906 | 0.900 |
 | Hit Rate@5 | 1.000 | 1.000 |
-| Mean latency | 0.041s | 0.090s |
+| Mean latency | 0.052s | 0.082s |
 | Citation precision | n/a (no citations) | 1.000 |
 | Citation completeness | n/a | 1.000 |
 
-Retrieval metrics are nearly identical between the two pipelines on this
-small, low-ambiguity corpus — expected, since both ultimately search the
-same indexed content, and the corpus isn't hard enough for reranking/
-expansion/decomposition to visibly move the needle. **The qualitative
-difference is where the two pipelines diverge in behavior, not their
-retrieval scores**: for the "unanswerable" case (a query with no relevant
-document at all), the agentic pipeline correctly returns
-`insufficient_evidence` rather than a guess; for the
+Recall now genuinely diverges, driven entirely by the `multi_hop` case
+(see The agentic retrieval loop and Query understanding & planning
+above): the baseline's single dense-retrieval pass finds only the
+document naming the CFO (recall 0.5 on that case), never the second
+document describing their prior role — findable only by that name, which
+the query itself never uses. The agentic pipeline's dependency-chained
+retrieval extracts the name from the first hop's evidence and resolves
+the second hop's search against it, finding both (recall 1.0 on that
+case). Every other case scores similarly between the two pipelines —
+expected, since both search the same indexed content and the corpus
+isn't hard enough for reranking/expansion to visibly move the needle on
+a single-hop question. **Beyond that measured difference, the rest is
+behavioral, not a retrieval score**: for the "unanswerable" case (a query
+with no relevant document at all), the agentic pipeline correctly
+returns `insufficient_evidence` rather than a guess; for the
 "contradictory_evidence" case (two sources reporting different numbers
 with no way to prefer one), it correctly returns `conflicting_evidence`
 and surfaces the specific conflicting claims rather than confidently
@@ -712,7 +737,7 @@ and provider-independent (driven by real local embeddings and real
 retrieval code). `estimated_tokens` only counts the final answer text via
 this repo's own offline tokenizer — not prompt/context tokens actually
 sent to an LLM, and not a real provider-reported usage figure; it's a
-rough, consistent proxy, not a cost estimate. The 15-document corpus is
+rough, consistent proxy, not a cost estimate. The 16-document corpus is
 deliberately small for a fast, self-contained, repo-committed benchmark —
 large enough to demonstrate the qualitative baseline-vs-agentic
 differences above, but too small to meaningfully stress hybrid fusion,
@@ -1019,11 +1044,12 @@ honest tradeoffs they are, not gaps to apologize for.
   rather than failing loudly. A useful follow-up would be flagging
   documents with suspiciously few extracted characters relative to page
   count rather than silently succeeding; full OCR support is future work.
-- **No multi-hop dependency chaining in query decomposition.** Subqueries
-  are retrieved independently and fused, not chained so that one step's
-  output feeds the next step's query. True dependency-aware multi-hop
-  reasoning is a substantially larger undertaking (effectively a
-  different class of system) and was deliberately kept out of scope here.
+- **Multi-hop chaining is bounded to exactly two hops.** `agents/multi_hop
+  .py` (see The agentic retrieval loop above) closes the real two-hop
+  gap — an entity extracted from hop one's evidence resolves hop two's
+  query — but a genuinely longer dependency chain (three-plus hops,
+  branching sub-questions) is a substantially larger undertaking
+  (effectively a different class of system) and stays out of scope here.
 - **API-key auth has no scoping, rotation, or persistence layer.** Keys
   live in `Settings.api_keys` (env-configured) only — sufficient for a
   single-tenant deployment, but a multi-tenant or higher-security

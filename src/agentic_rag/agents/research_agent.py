@@ -34,11 +34,16 @@ from dataclasses import dataclass, field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentic_rag.agents.evidence_agent import Contradiction, EvidenceAgent
+from agentic_rag.agents.multi_hop import MultiHopResolver, resolve_second_hop_query
 from agentic_rag.agents.planner import QueryDecomposer, RetrievalPlan, RetrievalPlanner
 from agentic_rag.agents.query_analyzer import QueryAnalysis, QueryAnalyzer, QueryExpander
-from agentic_rag.agents.retrieval_agent import RetrievalAgent
+from agentic_rag.agents.retrieval_agent import (
+    DEFAULT_EVIDENCE_TOP_K,
+    RetrievalAgent,
+    RetrievalOutcome,
+)
 from agentic_rag.core.config import Settings
-from agentic_rag.core.models import TerminationReason
+from agentic_rag.core.models import QueryType, TerminationReason
 from agentic_rag.embeddings.base import EmbeddingProvider
 from agentic_rag.generation.llm import LLMProvider
 from agentic_rag.observability.events import EventEmitter, EventType
@@ -104,6 +109,7 @@ class AgenticRetrievalLoop:
         self._expander = QueryExpander(llm)
         self._decomposer = QueryDecomposer(llm)
         self._retrieval_agent = RetrievalAgent(session, embedding_provider, reranker)
+        self._multi_hop_resolver = MultiHopResolver(llm)
 
     async def run(
         self,
@@ -190,22 +196,39 @@ class AgenticRetrievalLoop:
                 # because the check above only runs once per outer iteration.
                 remaining_calls = self._settings.max_retrieval_calls - retrieval_calls
                 subqueries = decomposition.subqueries[: max(1, remaining_calls)]
-                # Sequential, not gathered: subqueries share this loop's one
-                # AsyncSession, which does not support concurrent operations
-                # from multiple coroutines (see retrieval_agent.py).
-                subquery_outcomes = [
-                    await self._retrieval_agent.retrieve([subquery], plan, emitter=emitter)
-                    for subquery in subqueries
-                ]
-                retrieval_calls += len(subqueries)
-                candidates = _dedupe_by_chunk_id(
-                    [c for outcome in subquery_outcomes for c in outcome.candidates]
-                )
-                iteration_retrieval_latency = sum(
-                    o.retrieval_latency_seconds for o in subquery_outcomes
-                )
-                iteration_rerank_latency = sum(o.rerank_latency_seconds for o in subquery_outcomes)
-                queries_used = subqueries
+
+                if (
+                    analysis.query_type == QueryType.MULTI_HOP
+                    and len(subqueries) >= 2
+                    and remaining_calls >= 2
+                ):
+                    (
+                        candidates,
+                        iteration_retrieval_latency,
+                        iteration_rerank_latency,
+                        queries_used,
+                    ) = await self._retrieve_chained(subqueries[0], subqueries[1], plan, emitter)
+                    retrieval_calls += 2
+                else:
+                    # Sequential, not gathered: subqueries share this loop's
+                    # one AsyncSession, which does not support concurrent
+                    # operations from multiple coroutines (see
+                    # retrieval_agent.py).
+                    subquery_outcomes = [
+                        await self._retrieval_agent.retrieve([subquery], plan, emitter=emitter)
+                        for subquery in subqueries
+                    ]
+                    retrieval_calls += len(subqueries)
+                    candidates = _dedupe_by_chunk_id(
+                        [c for outcome in subquery_outcomes for c in outcome.candidates]
+                    )
+                    iteration_retrieval_latency = sum(
+                        o.retrieval_latency_seconds for o in subquery_outcomes
+                    )
+                    iteration_rerank_latency = sum(
+                        o.rerank_latency_seconds for o in subquery_outcomes
+                    )
+                    queries_used = subqueries
             else:
                 outcome = await self._retrieval_agent.retrieve(
                     current_queries, plan, emitter=emitter
@@ -279,6 +302,49 @@ class AgenticRetrievalLoop:
             retrieval_calls=retrieval_calls,
         )
 
+    async def _retrieve_chained(
+        self,
+        first_hop_query: str,
+        second_hop_query: str,
+        plan: RetrievalPlan,
+        emitter: EventEmitter | None,
+    ) -> tuple[list[RetrievedCandidate], float, float, list[str]]:
+        """Real dependency-chained multi-hop retrieval (see agents/multi_hop
+        .py): hop two's query is only resolved *after* hop one's evidence
+        comes back, using an entity extracted from it — not run
+        independently and merged by ranking alone, which is what plain
+        decomposition (the branch above) does and which cannot find
+        evidence keyed by an entity the original query never named.
+        Sequential for the same reason plain decomposition is: both hops
+        share this loop's one AsyncSession.
+        """
+        hop1: RetrievalOutcome = await self._retrieval_agent.retrieve(
+            [first_hop_query], plan, emitter=emitter
+        )
+        entity = await self._multi_hop_resolver.extract_bridge_entity(
+            first_hop_query, hop1.candidates
+        )
+        resolved_second_hop_query = resolve_second_hop_query(second_hop_query, entity)
+        hop2: RetrievalOutcome = await self._retrieval_agent.retrieve(
+            [resolved_second_hop_query], plan, emitter=emitter
+        )
+
+        # Each hop's own RetrievalAgent.retrieve() already reranked and
+        # truncated *within* that hop — but a bare concatenation would
+        # still always rank every hop-one chunk ahead of every hop-two
+        # chunk regardless of actual relevance, silently starving
+        # recall@k for the second hop's evidence. Re-rank the merged set
+        # by whatever score each candidate actually has before truncating.
+        candidates = _rank_and_truncate(
+            _dedupe_by_chunk_id(hop1.candidates + hop2.candidates), DEFAULT_EVIDENCE_TOP_K
+        )
+        retrieval_latency = hop1.retrieval_latency_seconds + hop2.retrieval_latency_seconds
+        rerank_latency = hop1.rerank_latency_seconds + hop2.rerank_latency_seconds
+        return candidates, retrieval_latency, rerank_latency, [
+            first_hop_query,
+            resolved_second_hop_query,
+        ]
+
     async def _build_evidence_agent(self, collection_id: uuid.UUID | None) -> EvidenceAgent:
         """Reads the collection's configured source authority order (spec
         §20), if any, so the evidence agent never hardcodes one hierarchy as
@@ -309,3 +375,24 @@ def _dedupe_by_chunk_id(candidates: list[RetrievedCandidate]) -> list[RetrievedC
     for candidate in candidates:
         seen.setdefault(candidate.chunk_id, candidate)
     return list(seen.values())
+
+
+def _rank_and_truncate(
+    candidates: list[RetrievedCandidate], top_k: int
+) -> list[RetrievedCandidate]:
+    """Re-sorts a merged candidate set (from more than one retrieval call)
+    by whatever score each candidate actually carries — rerank score where
+    reranking ran, fusion score otherwise — and truncates to `top_k`,
+    reassigning `rank` to reflect the merged order. Used where a bare
+    concatenation would silently bias toward whichever call happened
+    first (see `_retrieve_chained` above)."""
+
+    def _score(candidate: RetrievedCandidate) -> float:
+        if candidate.rerank_score is not None:
+            return candidate.rerank_score
+        return candidate.fusion_score or 0.0
+
+    ranked = sorted(candidates, key=_score, reverse=True)[:top_k]
+    for rank, candidate in enumerate(ranked, start=1):
+        candidate.rank = rank
+    return ranked

@@ -120,6 +120,26 @@ def _missing_information(ctx: _Context) -> list[str]:
     return [] if _is_evidence_sufficient(ctx) else [f"more detail about: {ctx.query[:60]}"]
 
 
+_PROPER_NOUN_PATTERN = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
+
+
+def _extract_entity(ctx: _Context) -> str:
+    """Heuristic stand-in for `agents/multi_hop.py`'s real entity-extraction
+    call: a consecutive-capitalized-words match (a plausible proper noun —
+    a person or company name) from the first hop's evidence, falling back
+    to its first word. Not semantically meaningful, same caveat as every
+    other mock heuristic in this module — it lets multi-hop chaining be
+    exercised end to end without a real model, not that it reliably
+    identifies the *correct* entity for arbitrary text."""
+    if not ctx.evidence.strip():
+        return ""
+    match = _PROPER_NOUN_PATTERN.search(ctx.evidence)
+    if match:
+        return match.group(0)
+    words = ctx.evidence.split()
+    return words[0] if words else ""
+
+
 def _derive_claim_text(ctx: _Context) -> str:
     """A synthesized claim should restate evidence, not the query — using
     the generic `str` fallback (built from the query) here would pollute the
@@ -179,6 +199,7 @@ _FIELD_NAME_RULES: dict[str, Any] = {
     "evidence_indices": lambda ctx: [1] if ctx.evidence.strip() else [],
     "entailed": _is_evidence_sufficient,
     "text": _derive_claim_text,
+    "entity": _extract_entity,
 }
 
 # Nested model types that should get their own (mostly-empty) default rather

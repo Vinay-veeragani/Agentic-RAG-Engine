@@ -162,6 +162,26 @@ _CORPUS_DOCUMENTS: tuple[_CorpusDocument, ...] = (
         "The board of directors appointed a new independent member with "
         "experience in international regulatory compliance.",
     ),
+    # A genuine two-hop pair: cfo_2024.txt answers "who", and
+    # cfo_prior_role.txt answers "what did they do before" — but only by
+    # name, not by any term the multi-hop query below uses. A plain
+    # independent-subquery search for the second hop's literal text
+    # cannot find cfo_prior_role.txt at all (verified: its own tsquery is
+    # empty, an all-stopword phrase); only a real dependency chain that
+    # extracts "Morgan Reyes" from the first hop's evidence and folds it
+    # into the second hop's query can (see agents/multi_hop.py and
+    # tests/integration/test_multi_hop.py, which prove this with the same
+    # mechanism against a smaller, isolated corpus).
+    _CorpusDocument(
+        "cfo_2024.txt",
+        "Morgan Reyes was the CFO during fiscal year 2024, overseeing "
+        "financial results.",
+    ),
+    _CorpusDocument(
+        "cfo_prior_role.txt",
+        "Before joining, Morgan Reyes worked at a supply chain analytics "
+        "company as an operations executive.",
+    ),
 )
 
 _RAW_CASES: tuple[EvalCase, ...] = (
@@ -210,6 +230,12 @@ _RAW_CASES: tuple[EvalCase, ...] = (
         BenchmarkCategory.CONTRADICTORY_EVIDENCE,
         ("conflicting_revenue_a.txt", "conflicting_revenue_b.txt"),
         (),
+    ),
+    EvalCase(
+        "Who was the CFO during fiscal year 2024, and what did they do before that?",
+        BenchmarkCategory.MULTI_HOP,
+        ("cfo_2024.txt", "cfo_prior_role.txt"),
+        ("Morgan Reyes",),
     ),
 )
 
