@@ -6,6 +6,7 @@ from agentic_rag.ingestion.loaders.validation import (
     detect_document_type,
     sanitize_filename,
     validate_upload,
+    verify_content_matches_type,
 )
 
 
@@ -52,3 +53,26 @@ def test_validate_upload_rejects_oversized_content() -> None:
 
 def test_validate_upload_accepts_valid_file() -> None:
     assert validate_upload("notes.txt", b"hello", max_size_bytes=1000) == "notes.txt"
+
+
+def test_verify_content_matches_type_accepts_real_pdf_magic_bytes() -> None:
+    verify_content_matches_type(DocumentType.PDF, b"%PDF-1.7\n...")
+
+
+def test_verify_content_matches_type_rejects_content_not_matching_extension() -> None:
+    with pytest.raises(InvalidDocumentError):
+        verify_content_matches_type(DocumentType.PDF, b"this is not a pdf at all")
+
+
+def test_verify_content_matches_type_accepts_docx_zip_signature() -> None:
+    verify_content_matches_type(DocumentType.DOCX, b"PK\x03\x04rest of zip content")
+
+
+def test_verify_content_matches_type_skips_text_formats_with_no_signature() -> None:
+    # Text formats have no reliable universal magic bytes — anything passes.
+    verify_content_matches_type(DocumentType.TXT, b"anything at all")
+
+
+def test_validate_upload_rejects_a_pdf_extension_with_non_pdf_content() -> None:
+    with pytest.raises(InvalidDocumentError):
+        validate_upload("fake.pdf", b"just some plain text, not a real PDF", max_size_bytes=1000)

@@ -10,6 +10,8 @@ Configure one or more keys to require a credential on every route except
 
 from __future__ import annotations
 
+import hmac
+
 from agentic_rag.core.config import Settings
 
 _BEARER_PREFIX = "Bearer "
@@ -31,4 +33,10 @@ def extract_api_key(*, authorization: str | None, x_api_key: str | None) -> str 
 
 
 def is_valid_api_key(settings: Settings, key: str | None) -> bool:
-    return key is not None and key in settings.api_keys
+    """Constant-time per candidate — a plain `in` check leaks timing
+    information proportional to how many leading characters a guess
+    shares with a real key. `settings.api_keys` is small (a handful of
+    keys at most), so comparing against every one costs nothing."""
+    if key is None:
+        return False
+    return any(hmac.compare_digest(key, candidate) for candidate in settings.api_keys)

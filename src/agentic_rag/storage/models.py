@@ -21,7 +21,15 @@ import uuid
 from datetime import date, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, Computed, ForeignKey, Index, UniqueConstraint, func
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    Computed,
+    ForeignKey,
+    Index,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -88,7 +96,13 @@ class Document(Base):
     collection: Mapped[Collection] = relationship(back_populates="documents")
     versions: Mapped[list[DocumentVersion]] = relationship(back_populates="document")
 
-    __table_args__ = (Index("ix_documents_collection_id", "collection_id"),)
+    __table_args__ = (
+        Index("ix_documents_collection_id", "collection_id"),
+        CheckConstraint(
+            "document_type IN ('pdf','docx','txt','markdown','html','csv','json')",
+            name="ck_documents_document_type",
+        ),
+    )
 
 
 class DocumentVersion(Base):
@@ -109,6 +123,10 @@ class DocumentVersion(Base):
 
     __table_args__ = (
         UniqueConstraint("document_id", "version_number", name="uq_document_version"),
+        CheckConstraint(
+            "status IN ('pending','parsed','indexed')",
+            name="ck_document_versions_status",
+        ),
     )
 
 

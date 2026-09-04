@@ -21,12 +21,35 @@ from agentic_rag.api.schemas.documents import (
 from agentic_rag.chunking.base import ChunkingConfig
 from agentic_rag.chunking.pipeline import index_document_version
 from agentic_rag.core.config import get_settings
+from agentic_rag.core.errors import InvalidDocumentError
 from agentic_rag.core.models import DocumentType
 from agentic_rag.ingestion.parsers.base import get_parser
 from agentic_rag.ingestion.pipeline import ingest_document
 from agentic_rag.storage.models import Document, DocumentVersion
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+_READ_CHUNK_SIZE = 1024 * 1024  # 1 MiB
+
+
+async def _read_upload_within_limit(file: UploadFile, *, max_size_bytes: int) -> bytes:
+    """Reads in bounded chunks and aborts as soon as the limit is crossed,
+    instead of buffering an arbitrarily large upload into memory before
+    ever checking its size."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(_READ_CHUNK_SIZE)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_size_bytes:
+            raise InvalidDocumentError(
+                f"uploaded file exceeds max size of {max_size_bytes} bytes",
+                details={"filename": file.filename or "upload"},
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 @router.post("", response_model=DocumentIngestResponse, status_code=201)
@@ -49,7 +72,9 @@ async def upload_document(
         ),
     ),
 ) -> DocumentIngestResponse:
-    content = await file.read()
+    content = await _read_upload_within_limit(
+        file, max_size_bytes=get_settings().max_upload_size_bytes
+    )
     result = await ingest_document(
         session=db,
         object_store=object_store,

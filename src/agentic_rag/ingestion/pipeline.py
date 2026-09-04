@@ -1,8 +1,13 @@
 """Ingestion orchestration: validate -> detect type -> parse -> persist.
 
 This is the one place that turns "some bytes a user uploaded" into
-`Document`/`DocumentVersion` rows plus a `ParsedDocument` for Phase 3
-(chunking) to consume. It does not chunk or embed anything itself.
+`Document`/`DocumentVersion` rows plus a `ParsedDocument` for chunking to
+consume. It does not chunk or embed anything itself.
+
+Re-uploading the same filename to the same collection creates a new
+`DocumentVersion` — unless the content is byte-identical to the latest
+version's (same checksum), in which case it's a no-op: no new version
+row, no redundant object-store write.
 """
 
 from __future__ import annotations
@@ -71,14 +76,22 @@ async def ingest_document(
             .where(DocumentVersion.document_id == document.id)
             .order_by(DocumentVersion.version_number.desc())
         )
-        next_version_number = (latest_version.version_number + 1) if latest_version else 1
-        document.checksum = checksum
         if title:
             document.title = title
         if source:
             document.source = source
         if document_date:
             document.document_date = document_date
+        if latest_version is not None and latest_version.checksum == checksum:
+            # Byte-identical re-upload: the checksum this module already
+            # computes was stored but never actually checked against
+            # anything — a re-upload of unchanged content always created a
+            # new version regardless. Real dedup: skip the new version and
+            # the redundant object-store write entirely.
+            await session.flush()
+            return IngestResult(document=document, version=latest_version, parsed=parsed)
+        document.checksum = checksum
+        next_version_number = (latest_version.version_number + 1) if latest_version else 1
 
     storage_key = f"{document.id}/v{next_version_number}/{safe_name}"
     storage_path = await object_store.save(storage_key, content)

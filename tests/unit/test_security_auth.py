@@ -39,3 +39,13 @@ def test_is_valid_api_key_rejects_unknown_key() -> None:
     settings = Settings(api_keys=["secret-key"])
     assert is_valid_api_key(settings, "wrong-key") is False
     assert is_valid_api_key(settings, None) is False
+
+
+def test_is_valid_api_key_checks_every_configured_key() -> None:
+    """Uses hmac.compare_digest per candidate (constant-time), not `in` —
+    still must accept any of several configured keys, not just the first."""
+    settings = Settings(api_keys=["key-one", "key-two", "key-three"])
+    assert is_valid_api_key(settings, "key-one") is True
+    assert is_valid_api_key(settings, "key-two") is True
+    assert is_valid_api_key(settings, "key-three") is True
+    assert is_valid_api_key(settings, "key-four") is False

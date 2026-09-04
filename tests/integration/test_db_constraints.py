@@ -1,8 +1,8 @@
-"""Schema-level guardrails against duplicate rows (found missing during an
-engineering audit): the application layer should never produce a duplicate
-chunk_index within a document version, or record the same chunk twice for
-one retrieval run — but until these constraints existed, nothing at the
-database level would have stopped it either."""
+"""Schema-level guardrails found missing during an engineering audit: the
+application layer should never produce a duplicate chunk_index within a
+document version, record the same chunk twice for one retrieval run, or
+write an unrecognized document_type/status — but until these constraints
+existed, nothing at the database level would have stopped it either."""
 
 import uuid
 
@@ -102,5 +102,51 @@ async def test_retrieved_chunks_reject_the_same_chunk_recorded_twice_for_one_run
     await db_session.flush()
 
     db_session.add(RetrievedChunk(retrieval_run_id=run.id, chunk_id=chunk.id, rank=2))
+    with pytest.raises(IntegrityError):
+        await db_session.flush()
+
+
+@pytest.mark.asyncio
+async def test_documents_reject_an_unrecognized_document_type(db_session) -> None:
+    """DB-level guardrail, not just app-layer discipline: only the
+    document types the ingestion pipeline actually produces should ever
+    reach this column."""
+    collection = Collection(name=f"col-{uuid.uuid4().hex[:8]}")
+    db_session.add(collection)
+    await db_session.flush()
+
+    db_session.add(
+        Document(
+            collection_id=collection.id,
+            filename="a.exe",
+            document_type="exe",
+            checksum="checksum-a",
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await db_session.flush()
+
+
+@pytest.mark.asyncio
+async def test_document_versions_reject_an_unrecognized_status(db_session) -> None:
+    collection = Collection(name=f"col-{uuid.uuid4().hex[:8]}")
+    document = Document(
+        collection=collection,
+        filename="a.txt",
+        document_type="txt",
+        checksum="checksum-a",
+    )
+    db_session.add_all([collection, document])
+    await db_session.flush()
+
+    db_session.add(
+        DocumentVersion(
+            document_id=document.id,
+            version_number=1,
+            checksum="checksum-a",
+            storage_path="a.txt",
+            status="not_a_real_status",
+        )
+    )
     with pytest.raises(IntegrityError):
         await db_session.flush()

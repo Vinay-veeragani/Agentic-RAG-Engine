@@ -89,7 +89,15 @@ Other environment-specific choices:
   by design (e.g. `Citation` foreign-keys into both `DocumentChunk` and
   `Answer`), which would otherwise force circular imports between domain
   modules; layering repository/business logic on top of one shared models
-  module avoids that.
+  module avoids that. Beyond foreign keys, the schema also enforces real
+  invariants at the database level, not just in application code: unique
+  constraints prevent a duplicate `chunk_index` within a document version
+  or the same chunk being recorded twice for one retrieval run, and check
+  constraints restrict `documents.document_type` and
+  `document_versions.status` to the values the code actually ever writes
+  — found missing during an engineering audit, verified with regression
+  tests that a bad insert genuinely raises `IntegrityError`, not just
+  that the migration applied cleanly.
 - `storage/cache.py` — Redis-or-in-memory cache client factory.
 - `storage/vector_store.py` / `storage/object_store.py` — a `VectorStore`
   protocol (pgvector is the concrete implementation used by the
@@ -128,15 +136,30 @@ pgvector that the provider abstraction can't hide.
   block-tag walk), CSV (one element per row rendered as `column: value`
   pairs), JSON (one element per record for a list-of-objects shape,
   otherwise the whole document as one element), and plain text.
-- `ingestion/loaders/validation.py` — file type detection from extension,
-  path-traversal-safe filename sanitization, empty/oversized upload
-  rejection.
+- `ingestion/loaders/validation.py` — file type detection from extension
+  plus a magic-byte content check for binary formats (PDF's `%PDF-`
+  signature, DOCX's zip local-file-header signature) so an extension
+  alone is no longer trusted for those two — a renamed file that isn't
+  even a PDF/zip is rejected before it reaches a parser. Text formats
+  (TXT/MD/HTML/CSV/JSON) have no reliable universal signature and aren't
+  content-checked; their parsers already fail loudly on genuinely
+  unparseable content. Also does path-traversal-safe filename
+  sanitization and empty/oversized upload rejection — the API route
+  (`api/routes/documents.py`) reads uploads in bounded chunks and aborts
+  as soon as the configured size limit is crossed, rather than buffering
+  an arbitrarily large upload into memory before ever checking its size.
 - `ingestion/cleaners/text.py` — Unicode normalization, control-character
   stripping, whitespace cleanup, applied uniformly after parsing
   regardless of source format.
 - `ingestion/pipeline.py` — orchestrates validate → detect type → parse →
   persist; re-uploading the same filename to the same collection creates
-  a new `DocumentVersion` rather than a duplicate `Document`.
+  a new `DocumentVersion` — unless the content is byte-identical to the
+  latest version's (same checksum), in which case it's a genuine no-op
+  (no new version row, no redundant object-store write). An earlier
+  version of this computed a checksum but never actually checked it
+  against anything, so every re-upload created a new version regardless
+  of whether the content had changed — an engineering audit caught this;
+  fixed, not just documented.
 - `POST /collections`, `GET /collections`, `POST /documents` (multipart
   upload), `GET /documents`, `GET /documents/{id}` — wired to the
   pipeline above.
@@ -925,6 +948,12 @@ provider selection: nothing extra is required to run locally.
   requires `Authorization: Bearer <key>` or `X-API-Key: <key>`, enforced
   by a single middleware in `api/main.py` rather than a per-route
   dependency, so a new route can't accidentally ship unauthenticated.
+  `is_valid_api_key()` compares a candidate against every configured key
+  with `hmac.compare_digest` (constant-time per candidate) rather than
+  Python's `in` operator, which would otherwise leak timing information
+  proportional to how many leading characters a guess shares with a real
+  key — caught during an engineering audit; the key list is small enough
+  that checking every entry costs nothing.
 - **Rate limiting** (`security/rate_limit.py`): a fixed-window limiter
   (`Settings.rate_limit_enabled`, off by default) keyed by API key when
   present, else client IP, on top of the existing `CacheClient`
