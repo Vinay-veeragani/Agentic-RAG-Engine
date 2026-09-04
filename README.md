@@ -4,14 +4,13 @@ An advanced, production-shaped Agentic RAG platform: autonomous knowledge
 retrieval, evidence gathering, verification, and grounded answer generation —
 not a "chat with PDF" demo.
 
-**Status: all 13 phases complete** (Foundation, ingestion, chunking +
-embeddings, dense/sparse/hybrid retrieval, reranking, query analysis +
-planning, the agentic retrieval loop, deeper evidence evaluation, answer
-synthesis + citations, the evaluation framework, observability + streaming,
-the full Next.js frontend, then security/reliability/performance
-hardening). Everything below describes what is actually implemented today.
-See `docs/architecture.md` for design decisions, rationale, and known
-gaps.
+**Status: feature-complete.** Document ingestion, chunking + embeddings,
+hybrid retrieval, reranking, query planning, a bounded agentic retrieval
+loop, evidence evaluation, grounded answer synthesis with citations, an
+evaluation framework, observability, a full web frontend, and security/
+reliability hardening are all implemented. Everything below describes what
+is actually implemented today. See `docs/architecture.md` for design
+decisions and rationale.
 
 ## Frontend
 
@@ -19,9 +18,8 @@ The full spec §37 UI lives under `frontend/` — Next.js + TypeScript +
 Tailwind + shadcn/ui + TanStack Query + Zustand, with all 9 sections
 (Knowledge, Collections, Documents, Search, Ask, Retrieval Traces,
 Evaluations, Observability, Settings) and the signature `/ask` page's
-expandable retrieval trace + Developer Mode. See
-`docs/architecture.md`'s "Phase 12" section for what was built, a real
-base-ui-vs-Radix API gotcha it surfaced, and how it was verified.
+expandable retrieval trace + Developer Mode. See `docs/architecture.md`
+for what was built and how it was verified.
 
 To run it locally: start the backend (`uvicorn agentic_rag.api.main:app
 --reload`), then from `frontend/`, `npm install` and `npm run dev`.
@@ -102,7 +100,7 @@ To run it locally: start the backend (`uvicorn agentic_rag.api.main:app
   `GET /metrics` — never exposing hidden chain-of-thought, only structured
   decisions and telemetry
 - Security/reliability hardening (all off/permissive by default, opt-in
-  for a real deployment — see `docs/architecture.md`'s Phase 13 section):
+  for a real deployment — see `docs/architecture.md`):
   optional API-key auth, fixed-window rate limiting, a deterministic
   prompt-injection filter that excludes suspicious retrieved chunks from
   the synthesis prompt entirely, `max_query_latency_seconds` now actually
@@ -180,97 +178,5 @@ actually running this benchmark against real corpus text — see
 
 ## Design decisions
 
-See `docs/architecture.md`.
-
-## Implementation plan
-
-1. ✅ Foundation + database + configuration
-2. ✅ Document ingestion (PDF/DOCX/TXT/Markdown/HTML/CSV/JSON parsers)
-3. ✅ Chunking + embeddings + indexing
-4. ✅ Dense + sparse + hybrid retrieval, Reciprocal Rank Fusion
-5. ✅ Reranking
-6. ✅ Query analysis + retrieval planning
-7. ✅ Agentic retrieval loop (bounded iteration, refinement)
-8. ✅ Evidence evaluation + contradiction detection
-9. ✅ Answer synthesis + citations + citation validation
-10. ✅ Evaluation framework (baseline vs. agentic RAG benchmark)
-11. ✅ Observability (structured events/metrics) + SSE streaming
-12. ✅ Frontend
-13. ✅ Security + reliability + performance hardening
-
-## Limitations (current)
-
-- API-key auth and rate limiting are implemented but off by default (see
-  `docs/architecture.md`'s Phase 13 section) — a real deployment must
-  explicitly set `API_KEYS` and `RATE_LIMIT_ENABLED=true`; there's still
-  no `users`-table-backed identity system, key rotation, or per-key tiers
-- Rate limiting is fixed-window, not sliding-window/token-bucket — a
-  documented burst tradeoff at window boundaries
-- Prompt-injection detection (new in Phase 13) is heuristic/regex-based,
-  not semantic — a rephrased attempt that matches no listed pattern won't
-  be caught
-- No real managed Redis in local use yet (in-memory fallback only) —
-  relevant to rate limiting now too, not only caching
-- No CI pipeline yet
-- No load/performance testing was run (no k6/locust harness) — Phase 13's
-  pool-sizing/retry changes are reasoned improvements, not measured under
-  simulated concurrent load
-- No OCR — a scanned/image-only PDF parses with no extracted text rather
-  than failing loudly
-- Markdown tables are not specially recognized (parse as plain text)
-- Token counting is an offline whitespace-based approximation, not a real
-  LLM subword tokenizer (`tiktoken`'s data host is unreachable from this
-  machine — see `docs/architecture.md`)
-- Sparse retrieval is Postgres full-text search (`ts_rank_cd`), not true
-  BM25 — no term-frequency saturation or length normalization
-- No retrieval-result caching yet; every search hits Postgres directly
-- No remote reranker (e.g. Cohere) — only a deterministic mock and a real
-  local cross-encoder
-- No Anthropic or Gemini LLM provider yet — mock, Ollama (local), and
-  OpenAI only; Ollama and OpenAI are implemented but unexercised in this
-  environment (no Ollama install, no API key)
-- Contradiction detection only catches numeric percentage claims sharing a
-  small fixed set of keywords (revenue/profit/margin/growth/decline/
-  earnings/sales/income) — non-numeric semantic contradictions aren't
-  detected; that would need real LLM reasoning and is a deliberate,
-  documented tradeoff for something that works identically regardless of
-  which LLM provider (or the mock) is configured
-- Temporal awareness is informational only — evidence spanning multiple
-  years is visible in the trace but not specially separated/handled
-- Query decomposition retrieves subqueries independently, not as a
-  dependency chain (spec's "find companies -> then look up their values"
-  multi-hop pattern is not implemented)
-- Nothing from the agentic loop is persisted to the database yet (no
-  `GET /queries/{id}/trace`) — its full trace is only returned in the API
-  response
-- No conversation memory — each `/query` call runs independently; a
-  follow-up like "what about 2024?" is not resolved against a prior query
-- No `url` field on citations yet — nothing in ingestion captures a source
-  URL
-- Citation numbering doesn't deduplicate — the same chunk cited by two
-  different claims gets two different citation numbers
-- `citation_recall` (spec §33) isn't computed — needs a ground-truth
-  "which chunks must be cited" label the benchmark fixtures don't carry
-- Generation-quality benchmark numbers are plumbing-only without a real
-  LLM provider configured (see "Baseline vs. agentic RAG" above)
-- The benchmark corpus (15 documents) is deliberately small for a fast,
-  self-contained, repo-committed run — too small to meaningfully stress
-  hybrid fusion/reranking/decomposition the way a realistic corpus would
-- Benchmark results aren't persisted to the database (`evaluation_datasets`/
-  `evaluation_cases`/`evaluation_results` tables exist in the schema since
-  Phase 1 but are unused) — only written to a JSON file
-- Query traces (`GET /queries/{id}/trace`) are in-memory only, per-process,
-  bounded to the 200 most recent — a restart or a second worker process
-  loses/fragments trace history; the `events` table exists in the schema
-  but is unused
-- SSE reconnection isn't implemented — a client can send `Last-Event-ID`
-  but nothing replays missed events from a persisted store
-- No actual OpenTelemetry span export — "observability" today means
-  structured JSON logs, structured events, and Prometheus metrics, not OTel
-  traces
-- No cost estimation — token/cache instruments exist but nothing converts
-  them into an estimated dollar figure
-- The frontend has not been visually verified in an actual browser (no
-  browser-automation tool was available) — HTTP-level and type-checking
-  verification only; see `docs/architecture.md`'s Phase 12 section
-- No frontend automated tests (component tests, e2e)
+See `docs/architecture.md` for design decisions, rationale, and known
+gaps/roadmap items.
