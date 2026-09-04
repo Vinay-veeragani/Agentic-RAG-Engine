@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from agentic_rag.api.schemas.settings import SettingsResponse
 from agentic_rag.core.config import get_settings
 from agentic_rag.security.auth import auth_required
+from agentic_rag.storage.cache import is_real_redis_configured
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -24,4 +25,8 @@ async def read_settings() -> SettingsResponse:
         rate_limit_enabled=settings.rate_limit_enabled,
         rate_limit_requests_per_window=settings.rate_limit_requests_per_window,
         rate_limit_window_seconds=settings.rate_limit_window_seconds,
+        workers=settings.workers,
+        cache_backend=(
+            "redis" if is_real_redis_configured(settings.redis_url) else "in_memory"
+        ),
     )

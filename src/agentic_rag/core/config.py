@@ -78,6 +78,16 @@ class Settings(BaseSettings):
     db_pool_size: int = 5
     db_max_overflow: int = 10
 
+    # Must match the actual `--workers N` uvicorn is started with (or the
+    # process manager's equivalent) — used only to validate that rate
+    # limiting has a real, cross-process cache backend before allowing more
+    # than one worker to start (see api/main.py's create_app()). Each
+    # worker is a separate process with its own InMemoryCache when no real
+    # Redis is configured, so a naive multi-worker deployment would
+    # otherwise silently multiply the effective rate limit by the worker
+    # count instead of enforcing it — found during an engineering audit.
+    workers: int = 1
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -98,7 +98,7 @@ _client: CacheClient | None = None
 _UNSET_MARKERS = ("<your-upstash-endpoint>", "<password>")
 
 
-def _is_configured(redis_url: str) -> bool:
+def is_real_redis_configured(redis_url: str) -> bool:
     return not any(marker in redis_url for marker in _UNSET_MARKERS)
 
 
@@ -106,7 +106,7 @@ def get_cache(redis_url: str) -> CacheClient:
     global _client
     if _client is None:
         client: CacheClient
-        if _is_configured(redis_url):
+        if is_real_redis_configured(redis_url):
             # redis-py's typeshed stubs declare async methods returning
             # `Awaitable[T]` rather than `Coroutine[Any, Any, T]`, which mypy
             # treats as a structural mismatch against our Protocol even though

@@ -18,3 +18,5 @@ class SettingsResponse(BaseModel):
     rate_limit_enabled: bool
     rate_limit_requests_per_window: int
     rate_limit_window_seconds: int
+    workers: int
+    cache_backend: str

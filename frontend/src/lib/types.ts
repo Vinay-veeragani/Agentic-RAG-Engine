@@ -233,6 +233,8 @@ export interface SettingsResponse {
   rate_limit_enabled: boolean;
   rate_limit_requests_per_window: number;
   rate_limit_window_seconds: number;
+  workers: number;
+  cache_backend: string;
 }
 
 export interface HealthResponse {

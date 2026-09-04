@@ -966,11 +966,23 @@ honest tradeoffs they are, not gaps to apologize for.
   when `REDIS_URL` is unset) and `TraceStore` are both process-local: they
   don't persist across restarts or coordinate across multiple worker
   processes. This is a real constraint for any deployment that needs
-  cross-process rate limiting, shared caching, or durable trace history —
-  the fix is operational (point `REDIS_URL` at a real instance, persist
-  `TraceStore` to the existing `events` table) rather than architectural,
-  since both already sit behind an abstraction that a real backend can
-  drop into.
+  cross-process shared caching or durable trace history — the fix is
+  operational (point `REDIS_URL` at a real instance, persist `TraceStore`
+  to the existing `events` table) rather than architectural, since both
+  already sit behind an abstraction that a real backend can drop into.
+  For rate limiting specifically, this stopped being just a documented
+  caveat: an engineering audit correctly pointed out that a naive
+  multi-worker deployment with `RATE_LIMIT_ENABLED=true` and no real
+  Redis would silently multiply the effective limit by the worker count
+  (each worker enforcing its own independent counter) rather than
+  actually enforcing it. `api/main.py`'s `validate_runtime_config()` now
+  fails app startup loudly for exactly that combination — `WORKERS` (a
+  new setting, must match the real `--workers N`) greater than 1, rate
+  limiting enabled, and no real `REDIS_URL` — while a single worker (the
+  common local/dev case) is left alone, since its in-memory cache *is*
+  the whole process and nothing is actually broken there. `GET /settings`
+  also exposes the resolved `cache_backend` and `workers` so this is
+  visible, not just enforced.
 - **Sparse retrieval uses Postgres full-text search, not true BM25.**
   `ts_rank_cd` doesn't implement BM25's term-frequency saturation or
   document-length normalization. A real BM25 implementation (e.g. via the

@@ -69,6 +69,8 @@ export default function SettingsPage() {
                     : "disabled"
                 }
               />
+              <Row label="Cache backend" value={settings.cache_backend} />
+              <Row label="Workers" value={String(settings.workers)} />
             </>
           ) : (
             <p className="text-muted-foreground">Loading…</p>

@@ -24,7 +24,7 @@ from agentic_rag.api.routes.query import router as query_router
 from agentic_rag.api.routes.retrieval import router as retrieval_router
 from agentic_rag.api.routes.settings import router as settings_router
 from agentic_rag.api.schemas.errors import ErrorResponse
-from agentic_rag.core.config import get_settings
+from agentic_rag.core.config import Settings, get_settings
 from agentic_rag.core.errors import AgenticRAGError
 from agentic_rag.core.models import FailureMode
 from agentic_rag.observability.tracing import (
@@ -34,7 +34,7 @@ from agentic_rag.observability.tracing import (
 )
 from agentic_rag.security.auth import auth_required, extract_api_key, is_valid_api_key
 from agentic_rag.security.rate_limit import RateLimiter
-from agentic_rag.storage.cache import close_cache, get_cache
+from agentic_rag.storage.cache import close_cache, get_cache, is_real_redis_configured
 from agentic_rag.storage.postgres import dispose_engine
 
 logger = get_logger(__name__)
@@ -70,7 +70,33 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("app.shutdown")
 
 
+def validate_runtime_config(settings: Settings) -> None:
+    """Fails loudly at startup rather than silently misbehaving at request
+    time. Rate limiting's cache-backed counters only coordinate correctly
+    across multiple worker processes when backed by a real Redis instance —
+    each worker gets its own independent InMemoryCache otherwise, silently
+    multiplying the effective rate limit by the worker count instead of
+    enforcing it. A single worker is unaffected (its in-memory cache *is*
+    the whole process), so this only blocks the specific combination that's
+    actually broken, not every no-Redis deployment."""
+    if (
+        settings.rate_limit_enabled
+        and settings.workers > 1
+        and not is_real_redis_configured(settings.redis_url)
+    ):
+        raise RuntimeError(
+            f"RATE_LIMIT_ENABLED=true with WORKERS={settings.workers} requires a "
+            "real REDIS_URL. The in-memory cache fallback does not coordinate "
+            "rate-limit counters across worker processes, which would silently "
+            f"turn a {settings.rate_limit_requests_per_window}-request limit into "
+            f"roughly {settings.rate_limit_requests_per_window * settings.workers} "
+            "requests actually allowed. Configure a real Redis instance, run with "
+            "WORKERS=1, or set RATE_LIMIT_ENABLED=false."
+        )
+
+
 def create_app() -> FastAPI:
+    validate_runtime_config(get_settings())
     app = FastAPI(title="Agentic RAG Platform", version="0.1.0", lifespan=lifespan)
 
     app.add_middleware(
