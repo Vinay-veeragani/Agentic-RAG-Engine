@@ -2,6 +2,8 @@ import uuid
 
 import pytest
 
+from agentic_rag.agents.research_agent import AgenticRetrievalLoop
+
 
 async def _upload_and_index(client, collection_id: str, filename: str, content: bytes) -> None:
     upload_resp = await client.post(
@@ -81,6 +83,41 @@ async def test_query_stream_reports_failure_event_on_no_evidence(client) -> None
     events = _parse_sse_events(body)
     completed = next(e for e in events if e["event_type"] == "query.completed")
     assert completed["payload"]["termination_reason"] == "no_evidence_found"
+
+
+@pytest.mark.asyncio
+async def test_query_stream_sanitizes_unexpected_error(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unhandled exception mid-stream must never leak its raw message to
+    the client (the same discipline the global exception handler applies to
+    POST /query) — only a generic message, with the real detail server-side
+    logged instead."""
+
+    async def raises(self, *args, **kwargs):
+        raise RuntimeError("dsn=postgresql://app:supersecret@db-internal:5432/agentic_rag")
+
+    monkeypatch.setattr(AgenticRetrievalLoop, "run", raises)
+
+    collection_resp = await client.post(
+        "/collections", json={"name": f"col-{uuid.uuid4().hex[:8]}"}
+    )
+    collection_id = collection_resp.json()["id"]
+
+    async with client.stream(
+        "POST",
+        "/query/stream",
+        json={"query": "why did revenue decline", "collection_id": collection_id},
+    ) as response:
+        body = ""
+        async for chunk in response.aiter_text():
+            body += chunk
+
+    events = _parse_sse_events(body)
+    failed = next(e for e in events if e["event_type"] == "query.failed")
+    assert failed["payload"]["error"] == "MODEL_ERROR"
+    assert failed["payload"]["message"] == "An internal error occurred."
+    assert "supersecret" not in body
 
 
 @pytest.mark.asyncio

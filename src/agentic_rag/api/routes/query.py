@@ -31,16 +31,17 @@ from agentic_rag.api.schemas.query import (
 from agentic_rag.api.schemas.retrieval import RetrievedCandidateResponse
 from agentic_rag.citations.formatter import format_citation
 from agentic_rag.core.config import Settings, get_settings
-from agentic_rag.core.errors import QueryTimeoutError
+from agentic_rag.core.errors import AgenticRAGError, QueryTimeoutError
 from agentic_rag.core.models import AnswerStatus, TerminationReason
 from agentic_rag.embeddings.base import EmbeddingProvider
 from agentic_rag.generation.llm import LLMProvider
 from agentic_rag.observability.events import EventEmitter, EventType, trace_store
-from agentic_rag.observability.tracing import get_trace_id
+from agentic_rag.observability.tracing import get_logger, get_trace_id
 from agentic_rag.retrieval.reranking import Reranker
 
 router = APIRouter(prefix="/query", tags=["query"])
 queries_router = APIRouter(prefix="/queries", tags=["query"])
+logger = get_logger(__name__)
 
 _LOOP_STATUS_OVERRIDE = {
     TerminationReason.CONFLICTING_EVIDENCE: AnswerStatus.CONFLICTING_EVIDENCE,
@@ -321,8 +322,15 @@ async def query_stream(
                 error="QueryTimeoutError",
                 message=f"Query exceeded the {settings.max_query_latency_seconds}s latency budget",
             )
+        except AgenticRAGError as exc:
+            emitter.emit(EventType.QUERY_FAILED, error=exc.code.value, message=exc.message)
         except Exception as exc:
-            emitter.emit(EventType.QUERY_FAILED, error=type(exc).__name__, message=str(exc))
+            logger.error("query_stream.unhandled_error", error_type=type(exc).__name__)
+            emitter.emit(
+                EventType.QUERY_FAILED,
+                error="MODEL_ERROR",
+                message="An internal error occurred.",
+            )
         finally:
             trace_store.store(trace_id, emitter.events)
             emitter.close()
