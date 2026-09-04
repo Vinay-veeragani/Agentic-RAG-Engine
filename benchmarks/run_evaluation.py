@@ -1,15 +1,22 @@
-"""Runs the baseline-vs-agentic benchmark (spec §33/§34) against the real
-local Postgres and prints a comparison table plus a JSON report.
+"""Runs the baseline-vs-agentic benchmark against the real local Postgres
+and prints a comparison table plus a JSON report.
 
 Usage (from repo root, with the venv active):
     python benchmarks/run_evaluation.py [--embedding local|mock] [--llm mock]
+        [--reranker mock|local]
 
 Defaults to the local sentence-transformers embedding provider (real,
 semantically meaningful — not mock) so retrieval metrics are actually
-measuring retrieval quality, not noise; and the mock LLM provider, since
-this environment has no Ollama install or API key configured. Every number
-printed is computed from an actual run against the corpus built fresh by
-`evaluation/datasets.py` — nothing here is a hardcoded/fabricated figure.
+measuring retrieval quality, not noise; the mock LLM provider, since this
+environment has no Ollama install or API key configured; and the mock
+reranker, so the committed `benchmarks/results/latest.json` reruns fast
+with no model download required. Pass `--reranker local` to instead
+exercise the real cross-encoder (`LocalCrossEncoderReranker`) end to end —
+the committed baseline numbers do NOT reflect real reranking quality
+unless you do this explicitly; see docs/architecture.md's Evaluation
+framework section. Every number printed is computed from an actual run
+against the corpus built fresh by `evaluation/datasets.py` — nothing here
+is a hardcoded/fabricated figure.
 """
 
 from __future__ import annotations
@@ -25,7 +32,7 @@ from agentic_rag.core.config import Settings
 from agentic_rag.embeddings.base import EmbeddingProvider
 from agentic_rag.evaluation.runner import BenchmarkReport, run_benchmark
 from agentic_rag.generation.llm import LLMProvider
-from agentic_rag.retrieval.reranking import MockReranker
+from agentic_rag.retrieval.reranking import Reranker, get_reranker
 from agentic_rag.storage.object_store import LocalFileObjectStore
 from agentic_rag.storage.postgres import get_session_factory
 
@@ -83,12 +90,13 @@ def _print_table(report: BenchmarkReport) -> None:
             )
 
 
-async def _main(embedding: str, llm_name: str, output: Path) -> None:
+async def _main(embedding: str, llm_name: str, reranker_name: str, output: Path) -> None:
     settings = Settings()
     session_factory = get_session_factory(settings.database_url)
     object_store = LocalFileObjectStore(settings.object_store_root)
     embedding_provider = _build_embedding_provider(embedding)
     llm = _build_llm_provider(llm_name)
+    reranker: Reranker = get_reranker(reranker_name)  # type: ignore[arg-type]
 
     async with session_factory() as session:
         report = await run_benchmark(
@@ -96,7 +104,7 @@ async def _main(embedding: str, llm_name: str, output: Path) -> None:
             object_store=object_store,
             embedding_provider=embedding_provider,
             llm=llm,
-            reranker=MockReranker(),
+            reranker=reranker,
             settings=settings,
         )
 
@@ -107,6 +115,7 @@ async def _main(embedding: str, llm_name: str, output: Path) -> None:
         "generated_at": datetime.now(UTC).isoformat(),
         "embedding_provider": embedding,
         "llm_provider": llm_name,
+        "reranker_provider": reranker_name,
         "cases": [asdict(c) for c in report.cases],
         "baseline_summary": asdict(report.baseline_summary),
         "agentic_summary": asdict(report.agentic_summary),
@@ -119,8 +128,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--embedding", choices=["local", "mock"], default="local")
     parser.add_argument("--llm", default="mock")
+    parser.add_argument("--reranker", choices=["mock", "local"], default="mock")
     parser.add_argument(
         "--output", type=Path, default=Path("benchmarks/results/latest.json")
     )
     args = parser.parse_args()
-    asyncio.run(_main(args.embedding, args.llm, args.output))
+    asyncio.run(_main(args.embedding, args.llm, args.reranker, args.output))

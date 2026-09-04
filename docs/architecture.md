@@ -647,7 +647,19 @@ appears twice, with two different numbers).
   (`benchmarks/results/latest.json`, committed as evidence of a real
   run). Defaults to the *local* sentence-transformers embedding provider
   rather than the mock one specifically so retrieval metrics measure real
-  retrieval quality, not noise.
+  retrieval quality, not noise; also defaults `--reranker` to `mock` so
+  the committed report reruns fast with no model download. Passing
+  `--reranker local` exercises the real cross-encoder end to end — doing
+  so surfaced a real interaction worth disclosing rather than hiding:
+  on this corpus it flips several cases (including a plain
+  `simple_factual` revenue lookup) from `grounded` to `conflicting_evidence`,
+  because reordering candidates changes which chunks land in the
+  contradiction detector's top-4 rank-scoped window (see Evidence
+  evaluation above), incidentally pulling in an unrelated numeric claim
+  from elsewhere in the corpus. Not fixed here — it's a genuine
+  precision limit of keyword-scoped contradiction detection interacting
+  with reranking, not a reranker bug, and a good target for follow-up
+  work rather than a claim to paper over.
 
 ### Real benchmark results (captured 2026-09-03, `--embedding local --llm mock`)
 
