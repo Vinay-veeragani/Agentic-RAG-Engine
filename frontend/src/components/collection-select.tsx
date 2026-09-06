@@ -30,7 +30,13 @@ export function CollectionSelect({
       onValueChange={(v) => onChange(v === "__all__" ? null : v)}
     >
       <SelectTrigger className="w-64">
-        <SelectValue placeholder={placeholder} />
+        <SelectValue placeholder={placeholder}>
+          {(v: string) =>
+            v && v !== "__all__"
+              ? (collections?.find((c) => c.id === v)?.name ?? v)
+              : placeholder
+          }
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="__all__">{placeholder}</SelectItem>
