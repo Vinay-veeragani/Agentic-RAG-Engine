@@ -21,6 +21,64 @@ def _build_sample_pdf() -> bytes:
     return data
 
 
+def _build_pdf_with_bolded_word_inside_a_paragraph() -> bytes:
+    """One block: a long paragraph whose first word happens to render in a
+    much larger font (e.g. a defined term) — should stay one paragraph,
+    not become a "heading" just because of that one word."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    html = (
+        '<p style="font-size:10pt">'
+        '<span style="font-size:20pt">Landlord</span>'
+        " covenants and agrees that this entire sentence is ordinary body"
+        " text describing a real obligation under the lease, long enough"
+        " that it could never be mistaken for a section heading on its own,"
+        " and it must not be reclassified as one just because a single"
+        " defined term at the start happens to render in a larger font."
+        "</p>"
+    )
+    page.insert_htmlbox(pymupdf.Rect(72, 72, 500, 300), html)
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def _build_pdf_with_whitespace_only_large_span() -> bytes:
+    """One block: ordinary body text with a blank/whitespace-only run at a
+    much larger font size in the middle — a real artifact found in a real
+    PDF, where it silently inflated the block's max font size without
+    contributing any actual visible text."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    html = (
+        '<p style="font-size:10pt">Ordinary paragraph text continues'
+        '<span style="font-size:30pt"> </span>'
+        "across this blank run with no visible effect on the reader"
+        " and should stay a normal paragraph.</p>"
+    )
+    page.insert_htmlbox(pymupdf.Rect(72, 72, 500, 300), html)
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def test_pdf_parser_does_not_reclassify_a_paragraph_with_one_bolded_word() -> None:
+    parsed = PdfParser().parse(
+        filename="a.pdf", content=_build_pdf_with_bolded_word_inside_a_paragraph()
+    )
+    assert len(parsed.elements) == 1
+    assert parsed.elements[0].element_type == ElementType.PARAGRAPH
+    assert "covenants and agrees" in parsed.elements[0].text
+
+
+def test_pdf_parser_ignores_whitespace_only_spans_for_heading_detection() -> None:
+    parsed = PdfParser().parse(
+        filename="a.pdf", content=_build_pdf_with_whitespace_only_large_span()
+    )
+    assert parsed.elements
+    assert all(e.element_type == ElementType.PARAGRAPH for e in parsed.elements)
+
+
 def test_pdf_parser_distinguishes_heading_by_font_size() -> None:
     parsed = PdfParser().parse(filename="a.pdf", content=_build_sample_pdf())
     assert parsed.page_count == 1

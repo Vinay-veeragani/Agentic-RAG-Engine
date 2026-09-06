@@ -17,4 +17,16 @@ def get_default_reranker(settings: Annotated[Settings, Depends(get_settings)]) -
     return _reranker_instances[key]
 
 
+async def warm_up_default_reranker(settings: Settings) -> None:
+    """Called once at app startup (see api/main.py's lifespan) so a real
+    model-backed reranker loads before the first request needs it, not
+    during it. Populates the same cache `get_default_reranker` reads from,
+    so the request-time instance is the already-warmed one."""
+    key = settings.reranker_provider
+    reranker = _reranker_instances.setdefault(key, get_reranker(key))
+    warm_up = getattr(reranker, "warm_up", None)
+    if warm_up is not None:
+        await warm_up()
+
+
 RerankerDep = Annotated[Reranker, Depends(get_default_reranker)]

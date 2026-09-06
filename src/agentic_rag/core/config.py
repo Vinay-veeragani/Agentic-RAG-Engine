@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ProviderName = Literal["mock", "openai", "anthropic", "gemini", "ollama", "local"]
+ProviderName = Literal["mock", "openai", "anthropic", "gemini", "groq", "ollama", "local"]
 
 
 class Settings(BaseSettings):
@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     gemini_api_key: str | None = None
+    groq_api_key: str | None = None
     ollama_base_url: str = "http://localhost:11434"
 
     # Agentic retrieval loop budgets — hard ceilings, never exceeded regardless of

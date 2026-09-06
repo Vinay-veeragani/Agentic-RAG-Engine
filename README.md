@@ -163,10 +163,16 @@ the evidence actually supported it.
 Generation-quality numbers from this specific run (`answer_relevance`, and
 implicitly `mean_estimated_tokens`) are **not** a real quality signal —
 `MockLLMProvider` excerpts evidence deterministically rather than generating
-language, since no real LLM provider (Ollama, OpenAI) is available in this
-environment. The retrieval-side comparison above is real (real local
-embeddings, real retrieval/rerank/evidence code); the generation side needs
-`--llm ollama` or `--llm openai` with real credentials to mean anything.
+language, since this committed run doesn't use a real LLM provider. The
+retrieval-side comparison above is real (real local embeddings, real
+retrieval/rerank/evidence code); the generation side needs `--llm ollama`,
+`--llm openai`, or `--llm groq` with real credentials to mean anything —
+and separately from this committed benchmark, a real end-to-end run
+against a real 111-page PDF with a real Groq API key confirmed the full
+pipeline works correctly with an actual model: correct query
+classification, well-reasoned evidence judgments, grounded synthesis, and
+a correct refusal (`insufficient_evidence`) on an out-of-scope question
+rather than a fabricated answer (see `docs/architecture.md`).
 Three real bugs in the contradiction detector were found and fixed by
 actually running this benchmark against real corpus text — see
 `docs/architecture.md` for what they were.

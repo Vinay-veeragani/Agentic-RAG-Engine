@@ -128,7 +128,9 @@ pgvector that the provider abstraction can't hide.
   independent of any database model.
 - Seven format-specific parsers behind one `DocumentParser` protocol
   (`ingestion/parsers/`): PDF (PyMuPDF, heading detection via relative
-  font size, per-page table extraction), DOCX (python-docx, walks the
+  font size, per-page table extraction — see below for two real bugs a
+  live end-to-end test against a real 111-page lease PDF surfaced that no
+  synthetic test document ever exercised), DOCX (python-docx, walks the
   body's paragraphs/tables in document order, heading detection via
   paragraph style), Markdown (`markdown-it-py` token stream — headings,
   paragraphs, list items, fenced code blocks; GFM tables are not
@@ -181,6 +183,69 @@ size for PDF headings, tag/style name for HTML/DOCX) — there is no
 universal "this is a heading" signal in any of these formats. Caption
 detection is implemented for HTML `<figcaption>` only; PDF/DOCX captions
 are not distinguished from regular paragraphs.
+
+### Two real bugs found by running the PDF parser against a real document
+
+Every prior verification of `PdfParser` used small, clean, hand-written
+test PDFs. Running it end-to-end against a real 111-page commercial lease
+(via a real Groq LLM and real local embeddings, not mocks) surfaced two
+genuine bugs no synthetic document ever exercised:
+
+1. **Heading detection classified 787 of 1375 elements (57%) as
+   headings** — including full paragraphs up to 6,219 characters long.
+   The cause: `max_size` (the block's largest font size, used to decide
+   "is this a heading") was computed from *every* span in a text block,
+   including whitespace-only ones — a stray blank run with an unrelated,
+   larger font size (a real, if odd, PDF-authoring artifact) silently
+   inflated a whole paragraph's `max_size` even though no visible text
+   was actually that size. Separately, a paragraph containing just one
+   bolded/larger word (common in legal documents — defined terms are
+   often emphasized) got its *entire* text reclassified as a heading,
+   since the check only looked at the block's max font size, never how
+   much of the block was actually that size. Fixed by (a) only
+   considering spans with real (non-whitespace) text when computing
+   `max_size`, and (b) requiring a heading to be short (≤150 characters)
+   *and* have at least 60% of its actual characters at the oversized
+   font — not just contain one oversized word. Dropped the false-positive
+   rate from 787 to 22 headings on the same document; the 22 that remain
+   are genuine section titles and exhibit headers (plus a few short,
+   genuinely garbled fragments from a scanned signature page — a source-
+   document limitation, not a parser bug). Regression tests
+   (`tests/unit/test_parsers_binary.py`) construct PDFs with each specific
+   defect (a whitespace-only oversized span; a long paragraph with one
+   oversized word) via PyMuPDF's own HTML-box insertion, so both are
+   proven fixed, not just asserted against this one real document.
+2. **Smart quotes/dashes came back as mojibake** (`Landlord's` →
+   `Landlordâ€™s`) — the classic UTF-8-decoded-as-cp1252 double-encoding
+   bug: this specific PDF's real UTF-8 bytes for `'` (`E2 80 99`) got
+   decoded one byte at a time as Windows-1252 somewhere in extraction,
+   producing three separate mojibake characters instead of one real one.
+   `ingestion/cleaners/text.py::clean_text` (applied uniformly to every
+   parser, not just PDF) now detects this specific pattern and repairs it
+   by round-tripping through cp1252 bytes — but only when the tell-tale
+   marker is present *and* doing so actually reduces it; ordinary text
+   (including genuine non-English text) is always returned untouched,
+   verified by tests that assert non-mojibake text round-trips as-is.
+
+Not fixed, and likely not safely fixable: the same PDF also has real
+extraction-level corruption from what looks like a broken font/ToUnicode
+CMap for certain letter pairs — "Term" comes back as "Tenn", "current
+forms" as "cun-ent fonns". This isn't a decoding bug like the mojibake
+above (there's no reversible transform to undo); the embedded font itself
+maps the wrong Unicode codepoints to those glyphs in the source PDF, so
+PyMuPDF is returning exactly what the file says those characters are. The
+only real fix is OCR (render the page to an image, re-read via a vision
+model or Tesseract, bypassing the broken embedded font entirely) — a
+genuinely larger feature, not a parser tweak, and consistent with the
+existing "no OCR" tradeoff already noted for scanned/image-only PDFs.
+
+Also found in that same live test: the local cross-encoder reranker's
+first-ever request paid the full model download/load cost (~10+ seconds)
+inline, since the model loads lazily on first use. `api/dependencies/
+reranker.py::warm_up_default_reranker()` is now called once at app
+startup (`api/main.py`'s `lifespan`) when the configured reranker
+supports it, so that cost is paid before any request needs it — a no-op
+for `MockReranker`, which has nothing to warm up.
 
 ## Chunking & embeddings
 
@@ -341,15 +406,22 @@ concrete need.
   system — query classification/expansion/decomposition are exactly the
   kind of language-understanding task deterministic rules handle poorly
   in general, unlike RRF or chunk windowing.
-- Three real providers: `MockLLMProvider` (below), `OllamaLLMProvider`
+- Four real providers: `MockLLMProvider` (below), `OllamaLLMProvider`
   (local, `/api/chat` with `format: "json"`, no API key — implemented but
   not exercised by any test, since Ollama isn't installed/running on this
-  machine), `OpenAILLMProvider` (plain `httpx` call, same
-  implemented-but-unexercised-without-a-key status as
-  `OpenAIEmbeddingProvider`). Anthropic and Gemini are not implemented —
-  the same `LLMProvider` protocol would support them, but adding
-  unexercised provider code with no way to verify it wasn't done
-  speculatively.
+  machine), `OpenAILLMProvider` and `GroqLLMProvider` (both plain `httpx`
+  calls against `OpenAICompatibleLLMProvider`, parameterized by base URL
+  + default model rather than one class per vendor — OpenAI, Groq, and a
+  growing list of others all expose the same `/chat/completions`
+  request/response shape). `GroqLLMProvider` was actually exercised
+  end-to-end against a real 111-page PDF with a real API key (see
+  Document ingestion above for what that surfaced) — correct query
+  classification, well-reasoned evidence-sufficiency judgments, grounded
+  synthesis, and, critically, a correct `insufficient_evidence` refusal
+  on an out-of-scope question rather than a fabricated answer. Anthropic
+  and Gemini are not implemented — the same `LLMProvider` protocol would
+  support them, but adding unexercised provider code with no way to
+  verify it wasn't done speculatively.
 - `generation/mock.py` — `MockLLMProvider.complete_structured` does not
   go through `BaseLLMProvider`'s wrapper; it directly introspects the
   *requested pydantic schema type* (via `model_fields`) and fills each
@@ -986,8 +1058,9 @@ provider selection: nothing extra is required to run locally.
   (`FailureMode.TIMEOUT` → 504) on expiry rather than letting a hung
   provider call hang the request forever.
 - **Bounded retry with backoff for transient provider failures**
-  (`core/retry.py`): `OpenAILLMProvider`, `OpenAIEmbeddingProvider`, and
-  `OllamaLLMProvider` retry a connection error/timeout or a retryable 5xx
+  (`core/retry.py`): `OpenAICompatibleLLMProvider` (so both
+  `OpenAILLMProvider` and `GroqLLMProvider`), `OpenAIEmbeddingProvider`,
+  and `OllamaLLMProvider` retry a connection error/timeout or a retryable 5xx
   up to 3 attempts with exponential backoff before surfacing
   `ModelProviderError` — never retries a 4xx, since a client error can't
   succeed differently on a second attempt. This complements (doesn't
@@ -1073,6 +1146,12 @@ honest tradeoffs they are, not gaps to apologize for.
   rather than failing loudly. A useful follow-up would be flagging
   documents with suspiciously few extracted characters relative to page
   count rather than silently succeeding; full OCR support is future work.
+  A related, real case found via a live end-to-end test (see Document
+  ingestion above): a PDF whose embedded font has a broken ToUnicode
+  mapping for certain letter pairs extracts *wrong* text with no error at
+  all ("Term" as "Tenn") — OCR is the only real fix for that case too,
+  since the corruption is in what the source file itself claims those
+  glyphs are, not in how it's decoded.
 - **Multi-hop chaining is bounded to exactly two hops.** `agents/multi_hop
   .py` (see The agentic retrieval loop above) closes the real two-hop
   gap — an entity extracted from hop one's evidence resolves hop two's

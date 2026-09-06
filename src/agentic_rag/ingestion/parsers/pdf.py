@@ -12,6 +12,17 @@ from agentic_rag.ingestion.parsed_document import DocumentElement, ElementType, 
 # document's body-text size by this factor. Heuristic, not exact — PDFs carry
 # no semantic "this is a heading" marker the way DOCX styles or HTML tags do.
 _HEADING_SIZE_RATIO = 1.15
+# Headings are short lines, not full paragraphs — a block longer than this
+# is never treated as one regardless of font size (see oversized_fraction
+# below for why length alone isn't sufficient either).
+_HEADING_MAX_CHARS = 150
+# A block only counts as a heading when at least this fraction of its
+# actual (non-whitespace) characters come from oversized spans — otherwise
+# a paragraph containing one bolded word or defined term (common in legal
+# documents) gets misclassified as a heading in its entirety. Found by
+# running this parser against a real, non-synthetic PDF, not designed in
+# from the start.
+_HEADING_MIN_OVERSIZED_FRACTION = 0.6
 
 
 class PdfParser:
@@ -69,18 +80,46 @@ class PdfParser:
 
                     lines_text = []
                     max_size = 0.0
+                    text_char_count = 0
+                    oversized_char_count = 0
+                    heading_threshold = body_size * _HEADING_SIZE_RATIO
                     for line in block.get("lines", []):
                         spans_text = "".join(span["text"] for span in line.get("spans", []))
                         if spans_text.strip():
                             lines_text.append(spans_text)
                         for span in line.get("spans", []):
-                            max_size = max(max_size, span.get("size", 0.0))
+                            span_text = span.get("text", "")
+                            if not span_text.strip():
+                                # A whitespace-only span (e.g. a stray blank
+                                # run at a line's end) can carry an unrelated,
+                                # larger font size than the actual visible
+                                # text — including it in max_size silently
+                                # inflated it and misclassified whole
+                                # paragraphs as headings. Only spans that
+                                # contribute real text count.
+                                continue
+                            size = span.get("size", 0.0)
+                            max_size = max(max_size, size)
+                            text_char_count += len(span_text)
+                            if size >= heading_threshold:
+                                oversized_char_count += len(span_text)
 
                     text = clean_text(" ".join(lines_text))
                     if not text:
                         continue
 
-                    is_heading = body_size > 0 and max_size >= body_size * _HEADING_SIZE_RATIO
+                    # A heading is short and its larger font actually spans
+                    # most of the block — not a full paragraph that merely
+                    # contains one bolded/larger word or defined term.
+                    oversized_fraction = (
+                        oversized_char_count / text_char_count if text_char_count else 0.0
+                    )
+                    is_heading = (
+                        body_size > 0
+                        and max_size >= heading_threshold
+                        and len(text) <= _HEADING_MAX_CHARS
+                        and oversized_fraction >= _HEADING_MIN_OVERSIZED_FRACTION
+                    )
                     if is_heading:
                         current_heading = text
                         elements.append(

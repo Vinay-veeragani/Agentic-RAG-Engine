@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
+from agentic_rag.api.dependencies.reranker import warm_up_default_reranker
 from agentic_rag.api.routes.collections import router as collections_router
 from agentic_rag.api.routes.documents import router as documents_router
 from agentic_rag.api.routes.evaluations import router as evaluations_router
@@ -63,6 +64,7 @@ _AUTH_EXEMPT_PATHS = {"/health", "/metrics"}
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     configure_logging(get_settings().log_level)
+    await warm_up_default_reranker(get_settings())
     logger.info("app.startup")
     yield
     await dispose_engine()

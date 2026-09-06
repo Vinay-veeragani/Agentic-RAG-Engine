@@ -2,6 +2,11 @@ import uuid
 
 import pytest
 
+from agentic_rag.api.dependencies.reranker import (
+    _reranker_instances,
+    warm_up_default_reranker,
+)
+from agentic_rag.core.config import Settings
 from agentic_rag.retrieval.base import RetrievedCandidate
 from agentic_rag.retrieval.reranking import (
     LocalCrossEncoderReranker,
@@ -111,3 +116,27 @@ async def test_rerank_with_fallback_passes_through_on_success() -> None:
 
     assert len(result) == 1
     assert result[0].content == "revenue profit margin"
+
+
+@pytest.mark.asyncio
+async def test_warm_up_default_reranker_is_a_noop_for_mock() -> None:
+    """MockReranker has nothing to warm up — must not error, and must not
+    be mistaken for a real model needing a load step."""
+    _reranker_instances.pop("mock", None)
+    await warm_up_default_reranker(Settings(reranker_provider="mock"))
+    assert isinstance(_reranker_instances["mock"], MockReranker)
+
+
+@pytest.mark.slow
+@pytest.mark.asyncio
+async def test_warm_up_default_reranker_loads_the_real_model() -> None:
+    """A real end-to-end test found the cross-encoder's first-ever request
+    paid ~10+ seconds for the model to load. warm_up_default_reranker is
+    what api/main.py's startup calls to pay that cost before any request
+    arrives — this proves it actually loads the model, not just that it
+    runs without error."""
+    _reranker_instances.pop("local", None)
+    await warm_up_default_reranker(Settings(reranker_provider="local"))
+    reranker = _reranker_instances["local"]
+    assert isinstance(reranker, LocalCrossEncoderReranker)
+    assert reranker._model is not None

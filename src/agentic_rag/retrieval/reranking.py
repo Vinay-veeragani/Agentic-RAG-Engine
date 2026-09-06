@@ -71,6 +71,15 @@ class LocalCrossEncoderReranker:
             self._model = CrossEncoder(self._model_name, device="cpu")
         return self._model
 
+    async def warm_up(self) -> None:
+        """Loads the model now (downloading it on first-ever use) instead
+        of on the first real request — found to cost ~10+ seconds when
+        that first request also happened to be a real user's, via a real
+        end-to-end test. `api/main.py`'s startup calls this when the
+        configured reranker supports it; not part of the `Reranker`
+        Protocol since `MockReranker` has nothing to warm up."""
+        await asyncio.to_thread(self._get_model)
+
     async def rerank(
         self, query: str, candidates: list[RetrievedCandidate], *, top_k: int
     ) -> list[RetrievedCandidate]:
