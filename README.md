@@ -103,6 +103,21 @@ alembic upgrade head
 uvicorn agentic_rag.api.main:app --reload
 ```
 
+One-time setup for the test suite (separate from the app's own database —
+see `docs/architecture.md`'s "Test isolation" section for why this
+exists): create a disposable `agentic_rag_test` database so running tests
+never touches your real data or provider quota.
+
+```sql
+CREATE DATABASE agentic_rag_test OWNER agentic_rag_app;
+\c agentic_rag_test
+CREATE EXTENSION vector;
+```
+
+```bash
+DATABASE_URL=postgresql+asyncpg://agentic_rag_app:<password>@localhost:5432/agentic_rag_test alembic upgrade head
+```
+
 Run tests: `pytest` (add `-m slow` to also run the real cross-encoder
 reranker test, which downloads/loads a model on first use) · Lint:
 `ruff check src tests` · Type-check: `mypy src`

@@ -75,6 +75,40 @@ Other environment-specific choices:
   needs `import pgvector.sqlalchemy` added by hand to the generated
   migration — see `migrations/versions/77d4e3cf344b_initial_schema.py`.
 
+### Test isolation: a dedicated, disposable test database
+
+`tests/conftest.py` used to read `DATABASE_URL` (and the provider
+settings) straight from real `.env` with no override — meaning every
+integration test that goes through the `client` fixture, which hits real
+routes that call `db.commit()` for real (there is no per-test rollback for
+that path, only `db_session`-fixture-based tests get one), permanently
+wrote its rows into whichever database a developer's `.env` happened to
+point at. Across many test runs over the life of this project, that
+silently accumulated **2,314 collections, 4,906 documents, and 5,773
+chunks** in the real local dev database — found only because a user doing
+manual UI testing noticed the collection list was absurdly long. The same
+problem existed for `LLM_PROVIDER`/`EMBEDDING_PROVIDER`/`RERANKER_PROVIDER`:
+running `pytest` right after a live end-to-end test with a real Groq key
+still configured burned real API quota and failed on rate limits instead
+of using the free, instant mock.
+
+Fixed at the root: `conftest.py` now sets `DATABASE_URL` to a dedicated
+`agentic_rag_test` database (same native Postgres install, own schema via
+the same Alembic migrations, own pgvector extension) and forces all three
+provider settings to `mock`, via `os.environ.setdefault(...)` executed
+before any `agentic_rag` import — `Settings()`/`get_settings()` reads the
+environment at construction time, and `get_settings()` is process-wide
+`lru_cache`'d, so whatever it resolves on its first real call (inside a
+test) is locked in for the whole session. `setdefault` rather than a hard
+assignment specifically so an explicit CI override still wins. A
+session-scoped, autouse fixture (`_reset_test_database`) also truncates
+every table before the suite starts, so a previous crashed/interrupted run
+never leaks into the next one — the test database stays empty at the
+start of every run, not an ever-growing pile. That fixture refuses to run
+at all unless `"test"` appears in the resolved `DATABASE_URL`, as a hard
+safety rail against ever truncating a real database if this is ever
+misconfigured.
+
 ## System architecture
 
 - `core/config.py` — env-driven `Settings` (Pydantic Settings), including
