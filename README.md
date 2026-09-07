@@ -1,112 +1,991 @@
-# Agentic RAG Platform
+# Agentic RAG Engine
 
-An advanced, production-shaped Agentic RAG platform: autonomous knowledge
-retrieval, evidence gathering, verification, and grounded answer generation —
-not a "chat with PDF" demo.
+### Production-Grade Autonomous Retrieval, Evidence Verification & Grounded Generation
 
-**Status: feature-complete.** Document ingestion, chunking + embeddings,
-hybrid retrieval, reranking, query planning, a bounded agentic retrieval
-loop, evidence evaluation, grounded answer synthesis with citations, an
-evaluation framework, observability, a full web frontend, and security/
-reliability hardening are all implemented. See `docs/architecture.md` for
-design decisions and rationale.
+> An advanced Agentic RAG system that autonomously plans retrieval, performs hybrid search, reranks evidence, detects insufficiency and contradictions, iteratively retrieves missing information, and generates citation-grounded answers with verifiable evidence.
 
-## Frontend
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](#)
+[![FastAPI](https://img.shields.io/badge/FastAPI-API-green.svg)](#)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-blue.svg)](#)
+[![Redis](https://img.shields.io/badge/Redis-coordination-red.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](#)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](#)
 
-The full UI lives under `frontend/` — Next.js + TypeScript +
-Tailwind + shadcn/ui + TanStack Query + Zustand, with all 9 sections
-(Knowledge, Collections, Documents, Search, Ask, Retrieval Traces,
-Evaluations, Observability, Settings) and the signature `/ask` page's
-expandable retrieval trace + Developer Mode. See `docs/architecture.md`
-for what was built and how it was verified.
+---
 
-To run it locally: start the backend (`uvicorn agentic_rag.api.main:app
---reload`), then from `frontend/`, `npm install` and `npm run dev`.
+## Why This Project?
 
-## How it works
+Most RAG systems follow a relatively simple pipeline:
 
-Most "RAG" tools take a question, fetch some chunks of text that look
-similar to it, and hand both to an LLM to generate an answer — with no
-check on whether the retrieved text actually supports what gets said back.
-This project takes a different approach: retrieval and reasoning are
-treated as a small **agentic loop** that only produces an answer once it
-has evidence it can actually stand behind.
-
-1. **Understand the question.** Classify what kind of question it is
-   (a simple fact lookup, a comparison, a multi-part question, something
-   ambiguous or unanswerable from the corpus) and plan a retrieval
-   strategy for it.
-2. **Retrieve.** Search the knowledge base using a hybrid of semantic
-   (embedding) search and keyword search, combined and ranked together,
-   then rerank the results for precision.
-3. **Judge the evidence — before writing anything.** Check whether what
-   was retrieved actually answers the question, is internally consistent
-   across sources, and covers the different angles the question asks
-   about. If sources disagree with each other, that's flagged, not
-   silently averaged. If the evidence looks thin, the system retrieves
-   again with a refined strategy — inside a hard budget, so it can never
-   loop forever.
-4. **Answer, grounded in what was actually found.** Only once there's
-   sufficient, consistent evidence does the system generate an answer —
-   and every claim in it is checked against the evidence it's supposedly
-   based on. A claim that isn't actually supported gets removed rather
-   than shipped. If there simply isn't a good answer in the knowledge
-   base, the system says so explicitly instead of guessing.
-
-Every step along the way is visible: you can see what was retrieved, why
-the system considered it sufficient (or not), what it found grounded,
-and what it filtered out.
-
-## Capabilities
-
-- **Multi-format ingestion** — PDF, Word, Markdown, HTML, CSV, JSON, and
-  plain text, all normalized into a common structure and organized into
-  collections.
-- **Hybrid retrieval** — semantic + keyword search, fused and reranked,
-  with filtering by document, section, source, or year.
-- **A bounded agentic loop** — the system can retrieve, judge, and
-  refine multiple times per question, but it's hard-capped so it always
-  terminates predictably rather than spinning indefinitely.
-- **Contradiction-aware evidence review** — conflicting facts across
-  documents are detected and either resolved by a configurable source
-  priority (e.g. trust an audited report over a press release) or
-  surfaced explicitly rather than papered over.
-- **Answers you can verify** — every citation traces back to a real
-  document and passage, and claims that aren't actually supported by the
-  evidence are dropped before the answer is returned.
-- **A real evaluation harness** — a baseline retrieve-then-generate
-  pipeline is benchmarked side-by-side with the full agentic pipeline
-  on a shared test corpus, so the difference isn't a claim, it's a
-  measured result (see below).
-- **Built-in observability** — every query's reasoning trace, timing,
-  and decisions are inspectable, with live streaming and metrics for
-  monitoring in production.
-- **Security and reliability hardening** — optional authentication, rate
-  limiting, prompt-injection filtering on retrieved content, request
-  timeouts, and automatic retries on transient failures.
-- **A full web UI** — upload documents, ask questions, inspect retrieval
-  traces, and compare evaluation results, all from the browser.
-
-See `docs/architecture.md` for how each of these is actually built and
-the engineering tradeoffs behind them.
-
-## Local setup
-
-Requires Python 3.11, a PostgreSQL 18 instance with the `vector` extension
-available, and (optionally) a Redis-compatible URL.
-
-```bash
-python -m venv .venv
-.venv/Scripts/pip install -e ".[dev]"
-copy .env.example .env   # then edit DATABASE_URL / REDIS_URL for your setup
-alembic upgrade head
-uvicorn agentic_rag.api.main:app --reload
+```text
+User Question
+      ↓
+Embedding
+      ↓
+Vector Search
+      ↓
+Top-K Chunks
+      ↓
+LLM
+      ↓
+Answer
 ```
 
-One-time setup for the test suite (separate from the app's own database —
-see `docs/architecture.md`'s "Test isolation" section for why this
-exists): create a disposable `agentic_rag_test` database so running tests
-never touches your real data or provider quota.
+That approach works for simple questions, but it becomes unreliable when questions require:
+
+* multiple pieces of evidence
+* comparisons across documents
+* temporal reasoning
+* conflicting sources
+* incomplete retrieval
+* source-quality assessment
+* precise citations
+* iterative investigation
+
+This project treats retrieval as an **autonomous evidence-gathering problem** rather than a single search operation.
+
+```text
+                    ┌──────────────────────┐
+                    │      User Query      │
+                    └──────────┬───────────┘
+                               ↓
+                    ┌──────────────────────┐
+                    │   Query Analyzer     │
+                    └──────────┬───────────┘
+                               ↓
+                    ┌──────────────────────┐
+                    │ Retrieval Planner    │
+                    └──────────┬───────────┘
+                               ↓
+              ┌──────────────────────────────────┐
+              │        Hybrid Retrieval          │
+              │                                  │
+              │ Dense │ Sparse │ Metadata        │
+              └────────────────┬─────────────────┘
+                               ↓
+                    ┌──────────────────────┐
+                    │      Reranker        │
+                    └──────────┬───────────┘
+                               ↓
+                    ┌──────────────────────┐
+                    │    Evidence Judge    │
+                    └──────────┬───────────┘
+                               ↓
+                     ┌─────────┴─────────┐
+                     │                   │
+                Insufficient          Sufficient
+                     │                   │
+                     ↓                   ↓
+              Query Refinement      Synthesis
+                     │                   │
+                     └──→ Retrieve ←─────┘
+                                         ↓
+                              Citation Validation
+                                         ↓
+                              Grounded Answer
+```
+
+The key idea is simple:
+
+> **The system does not generate an answer merely because it found some chunks. It first determines whether the available evidence is sufficient.**
+
+---
+
+# Core Capabilities
+
+## 🧠 Agentic Retrieval
+
+The system can dynamically decide:
+
+* what retrieval strategy to use
+* whether a question needs decomposition
+* whether query expansion is useful
+* whether more evidence is required
+* whether another retrieval iteration should be performed
+* when enough evidence has been collected
+
+The retrieval loop is bounded by configurable limits for:
+
+* iterations
+* retrieval calls
+* tokens
+* latency
+
+Cost per query is estimated and reported for observability, but is not itself
+an enforced stopping condition today — the loop terminates on iteration/call/
+token/latency budgets. This prevents uncontrolled autonomous loops.
+
+---
+
+## 🔎 Hybrid Retrieval
+
+Instead of relying exclusively on vector similarity, the engine combines multiple retrieval signals:
+
+```text
+                  Query
+                    │
+          ┌─────────┼─────────┐
+          ↓         ↓         ↓
+       Dense      Sparse    Metadata
+       Search     Search     Filters
+          │         │         │
+          └─────────┼─────────┘
+                    ↓
+             Result Fusion
+                    ↓
+                  RRF
+                    ↓
+               Reranking
+```
+
+Supported retrieval mechanisms include:
+
+* dense vector retrieval (pgvector cosine similarity, HNSW index)
+* PostgreSQL full-text search (`ts_rank_cd`, not literal BM25, same idea)
+* metadata filtering
+* hybrid retrieval
+* Reciprocal Rank Fusion
+* cross-encoder reranking
+
+The architecture keeps retrieval deterministic and separates retrieval mechanics from LLM reasoning.
+
+---
+
+# 🔁 Agentic Retrieval Loop
+
+A major component of the system is the bounded retrieval loop.
+
+```text
+Query
+  ↓
+Analyze
+  ↓
+Plan
+  ↓
+Retrieve
+  ↓
+Rerank
+  ↓
+Evaluate Evidence
+  │
+  ├── Sufficient ─────→ Generate
+  │
+  └── Insufficient
+            ↓
+       Refine Query
+            ↓
+       Retrieve Again
+```
+
+The system does not blindly retrieve more documents.
+
+The evidence evaluation step determines whether another retrieval iteration is justified.
+
+---
+
+# 🧩 Query Understanding
+
+Queries are classified before retrieval.
+
+Examples include:
+
+* simple factual
+* multi-hop
+* comparison
+* temporal
+* analytical
+* ambiguous
+* potentially unanswerable
+
+The planner can select different retrieval strategies based on the query.
+
+For example:
+
+```text
+"Who is the CEO of Company X?"
+
+→ Direct retrieval
+```
+
+while:
+
+```text
+"How did Company X's operating margin change
+between FY2023 and FY2025, and what caused the change?"
+
+→ Decompose
+→ Retrieve multiple evidence sets
+→ Apply temporal filtering
+→ Compare evidence
+→ Verify
+→ Synthesize
+```
+
+---
+
+# 📚 Document Intelligence
+
+The ingestion pipeline supports multiple document formats.
+
+Current parsers include:
+
+* PDF
+* DOCX
+* TXT
+* Markdown
+* HTML
+* CSV
+* JSON
+
+Documents are normalized into a common internal representation while preserving useful structural information.
+
+Where available, the system preserves:
+
+* page numbers
+* headings
+* sections
+* paragraphs
+* source metadata
+* document dates
+* chunk relationships (parent/child)
+
+---
+
+# ✂️ Intelligent Chunking
+
+The system supports multiple chunking strategies, selectable per collection:
+
+* **structural (default)** — groups by heading, never splits a section; oversized sections get a full parent chunk plus recursively-split child chunks
+* **recursive** — packs whole elements up to a token budget, carries the tail forward as overlap
+* **semantic** — splits into sentences, embeds each one, merges consecutive sentences until similarity drops below a threshold
+* **fixed** — plain fixed-size windows, the simple baseline
+
+Defaults: 400 tokens/chunk, 50 token overlap, 20 token minimum. Chunking
+configuration is retained per document version so indexing decisions remain
+reproducible.
+
+```text
+Document
+   │
+   ├── Section
+   │     ├── Paragraph
+   │     └── Paragraph
+   │
+   └── Section
+         ├── Paragraph
+         └── Paragraph
+```
+
+This provides considerably richer retrieval context than treating every document as an unstructured text blob.
+
+---
+
+# ⚖️ Evidence Evaluation
+
+Retrieval is followed by evidence assessment.
+
+Evidence can be evaluated based on factors such as:
+
+* relevance
+* coverage
+* directness
+* source authority
+* temporal correctness
+* contradiction
+* support for the requested claim
+
+The system can explicitly distinguish between:
+
+```text
+Evidence is sufficient
+Evidence is insufficient
+Evidence is conflicting
+Knowledge is unavailable
+```
+
+This allows the system to refuse unsupported answers rather than forcing the LLM to produce one.
+
+---
+
+# ⚔️ Contradiction Detection
+
+Different documents may provide conflicting information.
+
+The engine detects contradictions across retrieved evidence using deterministic
+matching (same metric, different numbers, non-overlapping source documents,
+same reporting period) and applies configurable source-authority policies —
+contradiction detection itself is not an LLM guess.
+
+Example:
+
+```text
+Source A
+Revenue: $42M
+Published: 2025
+
+Source B
+Revenue: $48M
+Published: 2026
+```
+
+Instead of blindly selecting whichever chunk has the highest similarity score, the system can consider:
+
+* source authority
+* document metadata
+* temporal context
+* evidence relationships
+
+If the conflict cannot be resolved reliably, the system exposes the conflict instead of hiding it.
+
+---
+
+# ⏳ Temporal Awareness
+
+Documents often contain information that changes over time.
+
+The system preserves temporal metadata such as:
+
+* publication date
+* reporting period
+* fiscal year
+* source date
+
+This helps prevent retrieval systems from treating information from different periods as interchangeable facts.
+
+---
+
+# 📌 Citation Grounding
+
+Citations are a first-class part of the architecture.
+
+The answer generation process does not allow the LLM to freely invent arbitrary citation identifiers.
+
+Instead:
+
+```text
+Retrieved Evidence
+       ↓
+Evidence IDs
+       ↓
+LLM generates claim + evidence references
+       ↓
+Deterministic citation resolution
+       ↓
+Citation validation
+       ↓
+Final answer
+```
+
+Citation references are resolved against the actual evidence available to the system.
+
+The citation layer can validate:
+
+* citation existence
+* claim support
+* citation precision
+* citation completeness
+
+Unsupported claims can be removed rather than presented as grounded facts.
+
+---
+
+# 🛡️ Prompt Injection Defense
+
+Retrieved documents are treated as **untrusted data**, not instructions.
+
+The system attempts to detect instruction-like content inside retrieved material before it reaches the generation context.
+
+The security boundary is:
+
+```text
+System Instructions
+        ↑
+        │
+Trusted Application Logic
+        ↑
+        │
+Retrieved Documents
+        │
+        └── UNTRUSTED DATA
+```
+
+A document cannot override the system's instructions simply because it contains text such as:
+
+```text
+Ignore previous instructions...
+Reveal system prompt...
+Call this tool...
+```
+
+Security controls include:
+
+* prompt-injection detection
+* document isolation
+* metadata filtering
+* path traversal protection
+* input validation
+* bounded execution
+* configurable budgets
+* timeout handling
+
+---
+
+# 🗃️ Knowledge Collections
+
+Knowledge is organized into isolated collections.
+
+```text
+Collection
+   │
+   ├── Documents
+   │      │
+   │      ├── Versions
+   │      │
+   │      └── Metadata
+   │
+   └── Chunks
+          │
+          └── Embeddings
+```
+
+Collection-level configuration can control:
+
+* embedding model
+* chunking configuration
+* metadata filters
+* source authority
+
+Collection isolation is enforced at query/retrieval boundaries.
+
+---
+
+# 🏗️ Architecture
+
+```text
+┌───────────────────────────────────────────────────────┐
+│                       Client                          │
+│             REST API / Streaming / UI                │
+└───────────────────────────┬───────────────────────────┘
+                            ↓
+┌───────────────────────────────────────────────────────┐
+│                    RAG Orchestrator                   │
+│                                                       │
+│ Query Analysis → Planning → Retrieval → Verification │
+└───────────────────────────┬───────────────────────────┘
+                            ↓
+┌───────────────────────────────────────────────────────┐
+│                       Agents                          │
+│                                                       │
+│ Query │ Planner │ Retrieval │ Evidence │ Synthesis   │
+│ Citation │ Verification                              │
+└───────────────────────────┬───────────────────────────┘
+                            ↓
+┌───────────────────────────────────────────────────────┐
+│                    Retrieval Layer                    │
+│                                                       │
+│ Dense │ Sparse │ Metadata │ Hybrid │ RRF │ Reranker  │
+└───────────────────────────┬───────────────────────────┘
+                            ↓
+┌───────────────────────────────────────────────────────┐
+│                    Knowledge Layer                    │
+│                                                       │
+│ Documents │ Chunks │ Embeddings │ Sources │ Versions │
+└───────────────────────────┬───────────────────────────┘
+                            ↓
+┌───────────────────────────────────────────────────────┐
+│                     Storage                           │
+│                                                       │
+│              PostgreSQL + pgvector                    │
+│                    Redis                              │
+└───────────────────────────────────────────────────────┘
+```
+
+---
+
+# 🧱 Design Philosophy
+
+A central architectural principle is:
+
+> **LLMs reason. Deterministic software executes and enforces.**
+
+### LLM responsibilities
+
+The model handles:
+
+* query understanding
+* query planning
+* decomposition
+* query refinement
+* evidence assessment
+* synthesis
+* claim extraction
+
+### Deterministic software responsibilities
+
+The application handles:
+
+* database operations
+* vector search
+* keyword search
+* rank fusion
+* filtering
+* citation resolution
+* validation
+* permissions
+* budgets
+* timeouts
+* caching
+* event handling
+* persistence
+
+This prevents the LLM from becoming an uncontrolled source of system behavior.
+
+---
+
+# 💾 Storage
+
+The system uses:
+
+### PostgreSQL
+
+Used as the primary durable data store for:
+
+* collections
+* documents
+* document versions
+* chunks
+* embeddings
+* metadata
+* query records
+* retrieval information
+
+### pgvector
+
+Used for vector similarity search with an HNSW index.
+
+### Redis
+
+Used where coordination and ephemeral infrastructure are appropriate, including:
+
+* caching
+* rate limiting
+* streaming/event infrastructure
+
+If no Redis URL is configured, the system automatically falls back to an
+in-process cache — useful for local development without external services.
+
+---
+
+# 🚀 API
+
+The system exposes a FastAPI service.
+
+Representative endpoints:
+
+```text
+POST   /collections
+GET    /collections
+GET    /collections/{id}
+
+POST   /documents
+GET    /documents
+GET    /documents/{id}
+POST   /documents/{id}/ingest
+
+POST   /search
+POST   /retrieve
+POST   /query/analyze
+
+POST   /query
+POST   /query/stream
+
+GET    /queries/{id}
+GET    /queries/{id}/trace
+
+GET    /evaluations/latest
+GET    /evaluations/latest/summary
+
+GET    /health
+GET    /metrics
+```
+
+---
+
+# 🌊 Streaming
+
+Long-running retrieval operations can be streamed through SSE.
+
+Example event lifecycle:
+
+```text
+query.started
+      ↓
+query.analyzed
+      ↓
+plan.created
+      ↓
+retrieval.started
+      ↓
+retrieval.completed
+      ↓
+reranking.started
+      ↓
+reranking.completed
+      ↓
+evidence.evaluated
+      ↓
+retrieval.refined
+      ↓
+generation.started
+      ↓
+citation.validation.started
+      ↓
+query.completed
+```
+
+This makes retrieval behavior observable rather than hiding everything behind a single API response.
+
+---
+
+# 🔬 Evaluation Framework
+
+The project includes an evaluation harness designed to compare traditional RAG against Agentic RAG.
+
+Evaluation categories include:
+
+* factual questions
+* multi-hop questions
+* comparisons
+* temporal questions
+* analytical questions
+* ambiguous questions
+* unanswerable questions
+* contradictory evidence
+
+### Retrieval metrics
+
+* Recall@K
+* Precision@K
+* MRR
+* NDCG@K
+* Hit Rate@K
+
+### Generation metrics
+
+* faithfulness
+* answer relevance
+* context relevance
+
+### Citation metrics
+
+* citation precision
+* citation completeness
+
+(`citation recall` would require a hand-labeled ground-truth "which chunks are
+actually relevant" set that this project doesn't maintain — the code
+documents this explicitly rather than faking the metric.)
+
+### System metrics
+
+* latency
+* estimated token usage
+* estimated cost
+* retrieval iterations
+* retrieval calls
+
+---
+
+# 📊 Baseline vs Agentic RAG
+
+One of the project's goals is not simply to claim that Agentic RAG is better.
+
+The repository contains separate execution paths for:
+
+```text
+Baseline RAG
+    vs
+Agentic RAG
+```
+
+This allows the system to measure whether additional reasoning actually improves retrieval and answer quality.
+
+Benchmark results are generated from the evaluation suite rather than hard-coded claims. Run it yourself:
+
+```bash
+python benchmarks/run_evaluation.py --embedding local --llm mock
+```
+
+See `benchmarks/` for reproducible evaluation scenarios and committed results
+(`benchmarks/results/latest.json`), and `docs/architecture.md` for a full
+write-up of a real run's numbers and what they mean.
+
+---
+
+# 🔭 Observability
+
+Every query can be traced through the retrieval pipeline.
+
+Useful telemetry includes:
+
+* query ID
+* trace ID
+* retrieval strategy
+* retrieved documents
+* retrieved chunks
+* retrieval scores
+* reranking scores
+* evidence decisions
+* iteration count
+* latency
+* estimated token usage and cost
+* errors
+* cache behavior
+
+The UI exposes this as a retrieval/debugging trace rather than only showing the final answer.
+
+---
+
+# 🖥️ Knowledge Intelligence UI
+
+The frontend is designed as a **Knowledge Intelligence Workspace**, not a generic chatbot.
+
+The primary workflow is:
+
+```text
+Ask
+ ↓
+Understand
+ ↓
+Retrieve
+ ↓
+Verify
+ ↓
+Answer
+```
+
+The UI exposes:
+
+* collections
+* documents
+* search
+* questions
+* answers
+* citations
+* source documents
+* evidence signals
+* retrieval traces
+* evaluation results
+* observability
+
+### Developer Mode
+
+For debugging and engineering investigation, the interface can expose:
+
+* query ID
+* trace ID
+* retrieval strategy
+* top-K configuration
+* embedding model
+* reranker
+* iteration count
+* token usage
+* latency
+* structured events
+* raw execution metadata
+
+Hidden chain-of-thought is never exposed.
+
+---
+
+# 🧪 Testing
+
+The repository contains extensive automated tests covering:
+
+### Unit tests
+
+* chunking
+* embeddings
+* retrieval
+* RRF
+* filtering
+* ranking
+* citation resolution
+* citation validation
+* security
+* query planning
+
+### Integration tests
+
+* PostgreSQL
+* pgvector
+* ingestion
+* retrieval
+* evidence evaluation
+* contradiction detection
+* collection isolation
+
+Tests run against a dedicated, disposable `agentic_rag_test` database (never
+your real dev database) with all providers forced to mock — see
+`docs/architecture.md`'s "Test isolation" section.
+
+### End-to-end scenarios
+
+Representative flows cover:
+
+```text
+Document
+   ↓
+Ingestion
+   ↓
+Chunking
+   ↓
+Embedding
+   ↓
+Indexing
+   ↓
+Query
+   ↓
+Retrieval
+   ↓
+Evidence
+   ↓
+Generation
+   ↓
+Citation Validation
+   ↓
+Grounded Answer
+```
+
+Adversarial scenarios include:
+
+* prompt injection
+* conflicting sources
+* insufficient evidence
+* malformed documents
+* temporal conflicts
+* retrieval failures
+* budget exhaustion
+
+---
+
+# ⚡ Reliability & Safety
+
+The system is intentionally bounded.
+
+Configurable limits exist for:
+
+* maximum retrieval iterations
+* retrieval calls
+* tokens
+* latency
+* document size
+* request execution timeouts
+
+Explicit failure states include:
+
+```text
+NO_KNOWLEDGE
+INSUFFICIENT_EVIDENCE
+CONFLICTING_EVIDENCE
+RETRIEVAL_ERROR
+MODEL_ERROR
+TIMEOUT
+BUDGET_EXCEEDED
+INVALID_DOCUMENT
+UNSUPPORTED_FILE_TYPE
+PROMPT_INJECTION_DETECTED
+```
+
+The objective is graceful failure rather than hallucinated success.
+
+---
+
+# 📁 Project Structure
+
+```text
+Agentic-RAG-Engine/
+│
+├── src/
+│   └── agentic_rag/
+│       ├── agents/
+│       ├── api/
+│       ├── chunking/
+│       ├── citations/
+│       ├── core/
+│       ├── embeddings/
+│       ├── evaluation/
+│       ├── generation/
+│       ├── ingestion/
+│       ├── knowledge/
+│       ├── observability/
+│       ├── retrieval/
+│       ├── security/
+│       └── storage/
+│
+├── tests/
+├── benchmarks/
+├── docs/
+├── examples/
+├── migrations/
+├── docker/
+│   ├── docker-compose.yml
+│   └── Dockerfile
+│
+├── frontend/
+├── alembic.ini
+├── pyproject.toml
+├── LICENSE
+└── README.md
+```
+
+---
+
+# 🚀 Quick Start
+
+## 1. Clone
+
+```bash
+git clone https://github.com/Vinay-veeragani/Agentic-RAG-Engine.git
+cd Agentic-RAG-Engine
+```
+
+## 2. Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Configure the required database and model/provider settings.
+
+## 3. Start infrastructure
+
+A Docker Compose stack is provided for environments that can run Docker
+(also what CI uses):
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+```
+
+If you're on a native local install instead (e.g. a native Windows
+PostgreSQL 18 + pgvector install and a managed Redis URL — see
+`docs/architecture.md`'s "Local development setup"), skip this step and just
+point `DATABASE_URL` / `REDIS_URL` in `.env` at your existing instances.
+
+## 4. Install dependencies
+
+```bash
+pip install -e ".[dev]"
+```
+
+## 5. Run migrations
+
+```bash
+alembic upgrade head
+```
+
+One-time setup for the test suite (a separate, disposable database so
+running `pytest` never touches your real data — see
+`docs/architecture.md`'s "Test isolation" section):
 
 ```sql
 CREATE DATABASE agentic_rag_test OWNER agentic_rag_app;
@@ -118,81 +997,321 @@ CREATE EXTENSION vector;
 DATABASE_URL=postgresql+asyncpg://agentic_rag_app:<password>@localhost:5432/agentic_rag_test alembic upgrade head
 ```
 
-Run tests: `pytest` (add `-m slow` to also run the real cross-encoder
-reranker test, which downloads/loads a model on first use) · Lint:
-`ruff check src tests` · Type-check: `mypy src`
+## 6. Start the API
 
-A Docker Compose stack (`docker/docker-compose.yml`) is maintained for CI and
-for environments that can run Docker, but is not exercised in local
-day-to-day development on this machine — see `docs/architecture.md` for why.
+```bash
+uvicorn agentic_rag.api.main:app --reload
+```
 
-## Baseline vs. agentic RAG
+## 7. Start the frontend (optional)
 
-Run it yourself: `python benchmarks/run_evaluation.py --embedding local --llm mock`
-(defaults shown). This rebuilds a small 16-document synthetic corpus fresh
-from the real ingestion pipeline, runs both pipelines over 10 cases spanning
-simple factual, comparison, temporal, analytical, aggregation, ambiguous,
-unanswerable, contradictory-evidence, and multi-hop questions, and writes a
-full JSON report to
-`benchmarks/results/latest.json` (committed, from a real run — nothing
-below is a fabricated number).
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-**Baseline**: Query → Dense Retrieval → Top-K → LLM. No planning, no hybrid
-retrieval, no reranking, no evidence judgment, no citations.
-**Agentic**: Query → Analyze → Plan → Hybrid Retrieval → Rerank → Evidence
-Judge → Refine if necessary → Synthesize → Citation Validate.
+The API will then be available at `http://localhost:8000` and the UI at `http://localhost:3000`.
 
-Captured `2026-09-04`, local sentence-transformers embeddings + mock LLM:
+---
 
-| Metric | Baseline | Agentic |
-|---|---|---|
-| Recall@5 (excl. ambiguous/unanswerable) | 0.938 | 1.000 |
-| Precision@5 | 0.275 | 0.300 |
-| MRR | 0.938 | 0.875 |
-| NDCG@5 | 0.906 | 0.900 |
-| Hit Rate@5 | 1.000 | 1.000 |
-| Mean latency | 0.052s | 0.082s |
-| Citation precision / completeness | n/a (no citations) | 1.000 / 1.000 |
+# 🧪 Run Tests
 
-Most cases score similarly between the two — both search the same index,
-and the corpus isn't hard enough for reranking/expansion to move the
-needle much on a single-hop question. **Recall diverges on the multi-hop
-case specifically**: "Who was the CFO during fiscal year 2024, and what
-did they do before that?" needs two documents — one naming the CFO, a
-second describing their prior role, findable only by that name, which
-the question itself never uses. The baseline (single dense retrieval
-pass) finds only the first document (recall 0.5); the agentic pipeline's
-dependency-chained retrieval extracts the name from the first hop's
-evidence and resolves the second hop's search against it, finding both
-(recall 1.0) — a real, measured difference, not just a qualitative claim.
+```bash
+pytest
+```
 
-The rest of the difference is behavioral, not a retrieval score: on the
-"unanswerable" case (no relevant document exists at all), the agentic
-pipeline returns `insufficient_evidence` instead of guessing; on the
-"contradictory_evidence" case (two sources reporting different numbers,
-no way to prefer one), it returns `conflicting_evidence` and surfaces the
-specific conflicting claims. The baseline pipeline has no such option —
-it always emits *an* answer, with no signal to the caller about whether
-the evidence actually supported it.
+Add `-m slow` to also run the real cross-encoder reranker test (downloads/loads a model on first use).
 
-Generation-quality numbers from this specific run (`answer_relevance`, and
-implicitly `mean_estimated_tokens`) are **not** a real quality signal —
-`MockLLMProvider` excerpts evidence deterministically rather than generating
-language, since this committed run doesn't use a real LLM provider. The
-retrieval-side comparison above is real (real local embeddings, real
-retrieval/rerank/evidence code); the generation side needs `--llm ollama`,
-`--llm openai`, or `--llm groq` with real credentials to mean anything —
-and separately from this committed benchmark, a real end-to-end run
-against a real 111-page PDF with a real Groq API key confirmed the full
-pipeline works correctly with an actual model: correct query
-classification, well-reasoned evidence judgments, grounded synthesis, and
-a correct refusal (`insufficient_evidence`) on an out-of-scope question
-rather than a fabricated answer (see `docs/architecture.md`).
-Three real bugs in the contradiction detector were found and fixed by
-actually running this benchmark against real corpus text — see
-`docs/architecture.md` for what they were.
+Type checking:
 
-## Design decisions
+```bash
+mypy src
+```
 
-See `docs/architecture.md` for design decisions, rationale, and known
-gaps/roadmap items.
+Linting:
+
+```bash
+ruff check src tests
+```
+
+---
+
+# 🔍 Example Query Flow
+
+Suppose the knowledge base contains annual reports from several years.
+
+Question:
+
+```text
+How did Company X's operating margin change
+between FY2023 and FY2025, and what factors
+contributed to the change?
+```
+
+The system can execute:
+
+```text
+1. Analyze question
+        ↓
+2. Detect temporal + analytical query
+        ↓
+3. Decompose into sub-questions
+        ↓
+4. Retrieve FY2023 evidence
+        ↓
+5. Retrieve FY2025 evidence
+        ↓
+6. Rerank evidence
+        ↓
+7. Evaluate coverage
+        ↓
+8. Detect conflicting evidence if present
+        ↓
+9. Retrieve additional evidence if necessary
+        ↓
+10. Synthesize supported claims
+        ↓
+11. Validate citations
+        ↓
+12. Return grounded answer
+```
+
+The important part is that the system can **recognize when the first retrieval pass is not enough**.
+
+---
+
+# 🧠 Why Not Just Use More Context?
+
+A common approach to improving RAG is:
+
+```text
+Retrieve more chunks
+        ↓
+Put everything into context
+        ↓
+Ask the LLM
+```
+
+This project takes a different approach.
+
+More context does not automatically mean better evidence.
+
+Instead, the system attempts to answer:
+
+> **Which evidence is actually necessary to support the answer?**
+
+This makes retrieval, verification, and citation quality explicit parts of the system.
+
+---
+
+# 🏛️ Key Engineering Decisions
+
+### PostgreSQL + pgvector
+
+Keeps relational metadata and vector search close together while reducing infrastructure complexity for the core system.
+
+### Hybrid Retrieval
+
+Dense retrieval captures semantic similarity while sparse retrieval provides lexical matching for exact terms, identifiers, and domain-specific language.
+
+### RRF
+
+Rank fusion combines retrieval strategies without requiring the scores from different retrievers to be directly comparable.
+
+### Cross-Encoder Reranking
+
+Retrieval produces a candidate set; reranking performs more expensive relevance evaluation only on the smaller candidate pool.
+
+### Bounded Agentic Loop
+
+Autonomous retrieval without hard limits can become expensive and unpredictable. The loop is therefore explicitly bounded.
+
+### Deterministic Citation Resolution
+
+Citation IDs are resolved against actual evidence rather than trusting the model to invent source references.
+
+### Evidence Before Generation
+
+The generator receives validated evidence rather than raw retrieval results whenever possible.
+
+---
+
+# 🔐 Security Model
+
+The system follows a defense-in-depth approach.
+
+```text
+Input Validation
+      ↓
+Document Validation
+      ↓
+Collection Isolation
+      ↓
+Metadata Filtering
+      ↓
+Prompt Injection Detection
+      ↓
+Evidence Validation
+      ↓
+Citation Validation
+      ↓
+Grounded Generation
+```
+
+Retrieved content is always considered untrusted.
+
+---
+
+# 📈 Performance Model
+
+The architecture separates inexpensive deterministic operations from expensive model operations.
+
+```text
+Cheap / Deterministic
+──────────────────────
+Metadata filtering
+Sparse search
+Vector search
+RRF
+Validation
+Caching
+Citation resolution
+
+Expensive / Model-based
+───────────────────────
+Query planning
+Decomposition
+Evidence reasoning
+Reranking
+Generation
+```
+
+This allows expensive reasoning to be introduced only where it provides value.
+
+---
+
+# 🧭 Roadmap
+
+Potential future extensions include:
+
+* additional vector-store backends
+* stronger semantic retrieval
+* learned retrieval policies
+* richer temporal reasoning
+* advanced multi-hop retrieval
+* larger evaluation datasets
+* distributed execution
+* additional local rerankers
+* multimodal document retrieval
+* web and external-source research
+* knowledge graphs
+
+---
+
+# ⚠️ What This Project Is Not
+
+This repository is intentionally focused.
+
+It is **not**:
+
+* a generic ChatGPT clone
+* a simple "chat with PDF" application
+* a hosted SaaS product
+* a replacement for every commercial RAG platform
+* an unrestricted autonomous agent
+* a benchmark claiming universal superiority of Agentic RAG
+
+It is a **production-shaped reference implementation for autonomous retrieval, evidence verification, and grounded generation**.
+
+---
+
+# 🎯 Design Goals
+
+The project prioritizes:
+
+```text
+Correctness
+    >
+Uncontrolled autonomy
+
+Evidence
+    >
+Model confidence
+
+Deterministic execution
+    >
+LLM-controlled infrastructure
+
+Bounded reasoning
+    >
+Infinite agent loops
+
+Verifiable citations
+    >
+Generated citations
+
+Measured evaluation
+    >
+Marketing claims
+```
+
+---
+
+# 📚 Documentation
+
+Detailed documentation is available under:
+
+```text
+docs/
+```
+
+See `docs/architecture.md` for the full design rationale, engineering
+tradeoffs, and write-ups of real bugs found and fixed by running this system
+against a real LLM and a real document.
+
+---
+
+# 🤝 Contributing
+
+Contributions, discussions, architectural suggestions, and improvements are welcome.
+
+Before submitting a major change, please consider:
+
+1. Does it preserve deterministic execution boundaries?
+2. Does it introduce an unnecessary LLM dependency?
+3. Can the behavior be evaluated?
+4. Can the behavior be tested?
+5. Does it preserve evidence provenance?
+6. Does it introduce an unbounded execution path?
+
+---
+
+# 📄 License
+
+MIT License — see `LICENSE`.
+
+---
+
+## Final Thought
+
+Retrieval-Augmented Generation is often presented as:
+
+> **Search → Context → LLM**
+
+Real-world knowledge systems are more complicated.
+
+They need to determine:
+
+* what to search for
+* how to search
+* whether the retrieved evidence is sufficient
+* whether sources disagree
+* whether information is temporally valid
+* whether another retrieval iteration is necessary
+* whether the final claims are actually supported
+* and whether every citation can be traced back to real evidence
+
+This project explores that layer between **retrieval and trustworthy generation**.
+
+> **Don't just retrieve context. Build evidence. Verify it. Then generate.**
